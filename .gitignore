@@ -29,6 +29,7 @@ htmlcov/
 
 # Artefatos gerados a partir da documentacao
 README.html
+site/_saida/
 
 # R (arquivos de sessao do RStudio)
 .Rhistory

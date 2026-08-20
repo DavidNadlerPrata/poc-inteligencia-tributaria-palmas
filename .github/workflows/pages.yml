@@ -1,0 +1,92 @@
+name: GitHub Pages
+
+# Publica o site estatico do PoC (documentacao, Model Card, RIA e o relatorio
+# de EDA) em https://davidnadlerprata.github.io/poc-inteligencia-tributaria-palmas/
+#
+# O site e ESTATICO por natureza do GitHub Pages: o painel Streamlit NAO roda
+# aqui, porque depende de um servidor Python. A pagina inicial explica isso e
+# ensina a executar localmente.
+#
+# O relatorio de EDA usa o notebook COMMITADO, que ja vem com as saidas
+# geradas sobre os dados reais. Reexecuta-lo aqui exigiria coletar da API --
+# o que este projeto evita fazer em automacao.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "site/**"
+      - "docs/**"
+      - "notebooks/eda_sprint2.ipynb"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+# Permissoes minimas exigidas pelo deploy de Pages.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Uma publicacao por vez; nao cancela a que estiver em andamento.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  construir:
+    name: Construir o site
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Preparar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+
+      - name: Instalar dependências
+        run: pip install markdown nbformat nbconvert
+
+      - name: Gerar as páginas
+        run: python site/gerar_site.py
+
+      - name: Conferir a saída
+        run: |
+          set -e
+          for pagina in index.html model-card.html ria.html eda.html estilo.css; do
+            if [ ! -s "site/_saida/$pagina" ]; then
+              echo "::error::página ausente ou vazia: $pagina"
+              exit 1
+            fi
+            echo "ok: $pagina ($(du -h "site/_saida/$pagina" | cut -f1))"
+          done
+
+          # O relatório de EDA só tem valor com os gráficos embutidos.
+          graficos=$(grep -o 'data:image/png;base64' site/_saida/eda.html | wc -l)
+          echo "gráficos embutidos no relatório de EDA: $graficos"
+          if [ "$graficos" -lt 5 ]; then
+            echo "::error::o notebook commitado parece estar sem saídas — reexecute-o e faça commit"
+            exit 1
+          fi
+
+      - name: Configurar Pages
+        uses: actions/configure-pages@v5
+
+      - name: Empacotar
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site/_saida
+
+  publicar:
+    name: Publicar
+    needs: construir
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - name: Publicar no GitHub Pages
+        id: deploy
+        uses: actions/deploy-pages@v4
