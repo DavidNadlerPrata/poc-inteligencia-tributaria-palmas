@@ -1,0 +1,272 @@
+name: CI
+
+# Integracao continua do PoC de Inteligencia Tributaria (Modulo 2 - DevOps basico).
+#
+# Os jobs estao ordenados por gravidade do que verificam. "regras-eticas" roda
+# primeiro e sozinho: se ele falhar, o sistema violou um compromisso do Model
+# Card ou do RIA, e nada mais importa ate que isso seja corrigido.
+#
+# NOTA DELIBERADA: nenhum job acessa a API da Prefeitura. Bater num servidor
+# publico a cada push seria abuso de recurso de terceiro -- e contraria a secao
+# 11 do plano de ensino, que exige carga razoavel. O pipeline roda com
+# --sem-rede e os testes de coleta usam dubles de resposta HTTP.
+
+on:
+  push:
+    branches: [main, master, "sprint-**"]
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+
+env:
+  PYTHON_PADRAO: "3.12"
+
+jobs:
+
+  # ------------------------------------------------------------------
+  # 1. Regras eticas -- o job mais importante do pipeline
+  # ------------------------------------------------------------------
+  regras-eticas:
+    name: Regras éticas (bloqueante)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Preparar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_PADRAO }}
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+
+      - name: Instalar dependências
+        run: pip install -r requirements-dev.txt
+
+      - name: Verificar exclusão do IPTU Social e ausência de vazamento
+        run: python -m pytest tests/test_etica.py -v
+
+      - name: Verificar fórmulas de fairness
+        run: python -m pytest tests/test_fairness.py -v
+
+  # ------------------------------------------------------------------
+  # 2. Qualidade de codigo
+  # ------------------------------------------------------------------
+  qualidade:
+    name: Lint (ruff)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Preparar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_PADRAO }}
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+
+      - name: Instalar ruff
+        run: pip install ruff
+
+      - name: Analisar código
+        run: ruff check . --output-format=github
+
+  # ------------------------------------------------------------------
+  # 3. Suite completa, em varias versoes do Python
+  # ------------------------------------------------------------------
+  testes:
+    name: Testes (Python ${{ matrix.python }})
+    runs-on: ubuntu-latest
+    needs: regras-eticas
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.11", "3.12", "3.13"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Preparar Python ${{ matrix.python }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+
+      - name: Instalar dependências
+        run: pip install -r requirements-dev.txt
+
+      - name: Rodar a suíte com cobertura
+        run: |
+          python -m pytest \
+            --cov=src \
+            --cov-report=term-missing \
+            --cov-report=xml \
+            --junitxml=resultado-testes.xml
+
+      - name: Publicar resultados
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: resultado-testes-py${{ matrix.python }}
+          path: |
+            resultado-testes.xml
+            coverage.xml
+          retention-days: 14
+
+  # ------------------------------------------------------------------
+  # 4. Pipeline de ponta a ponta (smoke test)
+  # ------------------------------------------------------------------
+  pipeline:
+    name: Pipeline ponta a ponta
+    runs-on: ubuntu-latest
+    needs: regras-eticas
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Preparar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_PADRAO }}
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+
+      - name: Instalar dependências
+        run: pip install -r requirements-dev.txt
+
+      # --sem-rede: o CI nao consome a API publica da Prefeitura.
+      - name: Executar o pipeline completo
+        run: python executar_poc.py --sem-rede
+
+      - name: Conferir os artefatos gerados
+        run: |
+          set -e
+          for arquivo in \
+            data/inteligencia_tributaria.db \
+            data/fila_cobranca.csv \
+            data/auditoria_fairness.json \
+            models/modelo_inadimplencia.joblib \
+            models/modelo_recuperabilidade.joblib \
+            models/metricas.json
+          do
+            if [ ! -s "$arquivo" ]; then
+              echo "::error::artefato ausente ou vazio: $arquivo"
+              exit 1
+            fi
+            echo "ok: $arquivo"
+          done
+
+      - name: Resumir o resultado da auditoria
+        run: |
+          python - <<'PY'
+          import json, pathlib
+
+          auditoria = json.loads(pathlib.Path("data/auditoria_fairness.json").read_text(encoding="utf-8"))
+          metricas = json.loads(pathlib.Path("models/metricas.json").read_text(encoding="utf-8"))
+
+          linhas = ["## Resultado do pipeline", "", "### Modelos", "",
+                    "| Modelo | Acurácia | F1 | ROC-AUC |", "|---|---|---|---|"]
+          for nome, bloco in metricas.items():
+              linhas.append(f"| {nome} | {bloco['acuracia']:.3f} | "
+                            f"{bloco['f1']:.3f} | {bloco['roc_auc']:.3f} |")
+
+          linhas += ["", "### Auditoria de fairness", "",
+                     "| Modelo | Paridade Demográfica | Igualdade de Oportunidade |",
+                     "|---|---|---|"]
+          for nome, bloco in auditoria.items():
+              dp = bloco["paridade_demografica"]
+              eo = bloco["igualdade_oportunidade"]
+              marca = lambda t: "aprovado" if t["aprovado"] else "**reprovado**"
+              linhas.append(f"| {nome} | {dp['diferenca']:.4f} ({marca(dp)}) | "
+                            f"{eo['diferenca']:.4f} ({marca(eo)}) |")
+
+          linhas += ["", "> O modelo de inadimplência reprova por construção: a",
+                     "> prevalência real difere entre grupos. Por isso ele não",
+                     "> direciona cobrança. Ver `docs/RIA.md`, seção 2."]
+
+          pathlib.Path("resumo.md").write_text("\n".join(linhas), encoding="utf-8")
+          print("\n".join(linhas))
+          PY
+          cat resumo.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Publicar artefatos do pipeline
+        uses: actions/upload-artifact@v4
+        with:
+          name: artefatos-pipeline
+          path: |
+            data/fila_cobranca.csv
+            data/auditoria_fairness.json
+            data/importancia_atributos.csv
+            data/mitigacao_fairness.csv
+            models/metricas.json
+          retention-days: 14
+
+  # ------------------------------------------------------------------
+  # 5. Notebook de EDA -- garante que continua executavel
+  # ------------------------------------------------------------------
+  notebook:
+    name: Notebook de EDA
+    runs-on: ubuntu-latest
+    needs: regras-eticas
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Preparar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_PADRAO }}
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+
+      - name: Instalar dependências
+        run: pip install -r requirements-dev.txt
+
+      # O notebook precisa do banco (vem do pipeline) e de data/arrecadacao_bruta.csv
+      # (viria da coleta). Como o CI nao acessa a API, usamos a amostra versionada
+      # em tests/fixtures: 369 linhas reais cobrindo os 12 meses e os 7 niveis
+      # hierarquicos, o bastante para exercitar todos os caminhos de codigo.
+      - name: Preparar os dados
+        run: |
+          python executar_poc.py --sem-rede
+          cp tests/fixtures/arrecadacao_amostra.csv data/arrecadacao_bruta.csv
+          echo "usando amostra versionada no lugar da coleta real"
+
+      - name: Regerar e executar o notebook
+        run: |
+          python notebooks/gerar_eda.py
+          python - <<'PY'
+          import sys
+          import nbformat
+          from nbclient import NotebookClient
+
+          caderno = nbformat.read("notebooks/eda_sprint2.ipynb", as_version=4)
+          nbformat.validate(caderno)
+
+          cliente = NotebookClient(caderno, timeout=600, kernel_name="python3",
+                                   allow_errors=True,
+                                   resources={"metadata": {"path": "notebooks/"}})
+          cliente.execute()
+
+          falhas = [(i, s.ename, s.evalue)
+                    for i, c in enumerate(caderno.cells) if c.cell_type == "code"
+                    for s in c.get("outputs", []) if s.output_type == "error"]
+
+          for indice, nome, mensagem in falhas:
+              print(f"::error::célula {indice}: {nome}: {mensagem}")
+
+          codigo = sum(1 for c in caderno.cells if c.cell_type == "code")
+          graficos = sum(1 for c in caderno.cells
+                         for s in c.get("outputs", []) if s.output_type == "display_data")
+          print(f"células de código: {codigo} | gráficos: {graficos} | falhas: {len(falhas)}")
+          sys.exit(1 if falhas else 0)
+          PY
+
+      # ATENCAO: este artefato roda sobre a AMOSTRA, entao seus numeros nao batem
+      # com o texto do notebook (que descreve a base completa). Serve para
+      # verificar que o codigo executa, nao como relatorio de EDA.
+      - name: Publicar a execução de verificação
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: notebook-verificacao-amostra
+          path: notebooks/eda_sprint2.ipynb
+          retention-days: 14

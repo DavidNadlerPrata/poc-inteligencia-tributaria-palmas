@@ -1,0 +1,40 @@
+# Dados e artefatos gerados pelo pipeline
+data/*.csv
+data/*.db
+data/*.json
+models/*.joblib
+models/*.json
+
+# Mantem a estrutura de diretorios no repositorio
+!data/.gitkeep
+!models/.gitkeep
+
+# Logs
+*.log
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.ipynb_checkpoints/
+
+# Ferramentas de teste e lint
+.pytest_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+resultado-testes.xml
+htmlcov/
+
+# Artefatos gerados a partir da documentacao
+README.html
+
+# R (arquivos de sessao do RStudio)
+.Rhistory
+.RData
+.Rproj.user/
+
+# Sistema
+.DS_Store
+Thumbs.db

@@ -1,0 +1,66 @@
+[project]
+name = "poc-inteligencia-tributaria"
+version = "0.1.0"
+description = "PoC do Projeto Integrador do Eixo II - Inteligencia Tributaria de Palmas-TO"
+requires-python = ">=3.11"
+
+# --------------------------------------------------------------------------
+# Ruff: linter e formatador (Modulo 2 - Clean Code e DevOps basico)
+# --------------------------------------------------------------------------
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+exclude = ["data", "models", ".venv", "notebooks/*.ipynb"]
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle: erros
+    "W",    # pycodestyle: avisos
+    "F",    # pyflakes: variaveis nao usadas, imports quebrados
+    "I",    # isort: ordem dos imports
+    "UP",   # pyupgrade: sintaxe moderna
+    "B",    # flake8-bugbear: armadilhas comuns
+    "C4",   # comprehensions desnecessarias
+]
+ignore = [
+    "E501",  # linha longa: o limite ja e verificado por line-length
+    # C408 sugere trocar dict(a=1) por {"a": 1}. No plotly, a forma com dict()
+    # e o idioma consagrado da biblioteca e le melhor em layouts aninhados.
+    "C408",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Os pontos de entrada ajustam sys.path antes de importar os modulos locais,
+# entao o import fora do topo e proposital.
+"executar_poc.py" = ["E402"]
+"app/painel.py" = ["E402"]
+"tests/conftest.py" = ["E402"]
+"notebooks/gerar_eda.py" = ["E501"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["config", "coleta", "etl", "fairness", "modelo", "sintetico"]
+
+# --------------------------------------------------------------------------
+# Pytest
+# --------------------------------------------------------------------------
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short --strict-markers"
+filterwarnings = ["ignore::DeprecationWarning"]
+
+# --------------------------------------------------------------------------
+# Cobertura de testes
+# --------------------------------------------------------------------------
+[tool.coverage.run]
+source = ["src"]
+omit = ["*/__init__.py", "*/tests/*"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if __name__ == .__main__.:",
+    "raise NotImplementedError",
+]
