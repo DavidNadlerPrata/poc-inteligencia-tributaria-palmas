@@ -1,7 +1,6 @@
 # PoC — Inteligência Tributária de Palmas-TO
 
-<!-- Troque USUARIO/REPOSITORIO pelo caminho do repositório da sua equipe. -->
-[![CI](https://github.com/USUARIO/REPOSITORIO/actions/workflows/ci.yml/badge.svg)](https://github.com/USUARIO/REPOSITORIO/actions/workflows/ci.yml)
+[![CI](https://github.com/DavidNadlerPrata/poc-inteligencia-tributaria-palmas/actions/workflows/ci.yml/badge.svg)](https://github.com/DavidNadlerPrata/poc-inteligencia-tributaria-palmas/actions/workflows/ci.yml)
 [![Python](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-blue)](https://www.python.org/)
 [![Testes](https://img.shields.io/badge/testes-97-brightgreen)](tests/)
 [![Cobertura](https://img.shields.io/badge/cobertura-90%25-brightgreen)](tests/)
