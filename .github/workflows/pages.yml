@@ -55,12 +55,22 @@ jobs:
       - name: Conferir a saída
         run: |
           set -e
+          echo "--- publicação acadêmica ---"
           for pagina in index.html model-card.html ria.html eda.html estilo.css; do
             if [ ! -s "site/_saida/$pagina" ]; then
               echo "::error::página ausente ou vazia: $pagina"
               exit 1
             fi
             echo "ok: $pagina ($(du -h "site/_saida/$pagina" | cut -f1))"
+          done
+
+          echo "--- publicação institucional (Sefin) ---"
+          for pagina in index.html como-funciona.html salvaguardas.html implantacao.html estilo.css; do
+            if [ ! -s "site/_saida/sefin/$pagina" ]; then
+              echo "::error::página ausente ou vazia: sefin/$pagina"
+              exit 1
+            fi
+            echo "ok: sefin/$pagina ($(du -h "site/_saida/sefin/$pagina" | cut -f1))"
           done
 
           # O relatório de EDA só tem valor com os gráficos embutidos.
@@ -70,6 +80,36 @@ jobs:
             echo "::error::o notebook commitado parece estar sem saídas — reexecute-o e faça commit"
             exit 1
           fi
+
+      # A publicação institucional é dirigida a gestores. Links para o
+      # repositório e jargão de desenvolvimento não pertencem a ela: esta
+      # verificação impede que voltem por descuido numa edição futura.
+      - name: Verificar a separação de público na versão institucional
+        run: |
+          set -e
+          falhou=0
+
+          if grep -rqi "github\|githubusercontent" site/_saida/sefin/; then
+            echo "::error::a versão da Sefin contém referência ao GitHub"
+            grep -rni "github" site/_saida/sefin/ | head -5
+            falhou=1
+          fi
+
+          for termo in "streamlit" "sklearn" "pytest" "ROC-AUC" "\.py\b"; do
+            if grep -rqiE "$termo" site/_saida/sefin/*.html; then
+              echo "::error::jargão técnico na versão da Sefin: $termo"
+              falhou=1
+            fi
+          done
+
+          if grep -oE 'href="https?://[^"]+"' site/_saida/sefin/*.html | grep -q .; then
+            echo "::error::a versão da Sefin não deveria ter links externos"
+            grep -ohE 'href="https?://[^"]+"' site/_saida/sefin/*.html | sort -u
+            falhou=1
+          fi
+
+          [ "$falhou" -eq 0 ] && echo "separação de público preservada"
+          exit $falhou
 
       - name: Configurar Pages
         uses: actions/configure-pages@v5

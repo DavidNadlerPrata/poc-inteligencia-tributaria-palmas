@@ -5,6 +5,23 @@
 [![Testes](https://img.shields.io/badge/testes-97-brightgreen)](tests/)
 [![Cobertura](https://img.shields.io/badge/cobertura-90%25-brightgreen)](tests/)
 
+## Publicações
+
+O projeto tem **duas publicações na web**, geradas do mesmo trabalho para
+públicos diferentes:
+
+| Publicação | Endereço | Público |
+|---|---|---|
+| **Acadêmica** | [davidnadlerprata.github.io/poc-inteligencia-tributaria-palmas](https://davidnadlerprata.github.io/poc-inteligencia-tributaria-palmas/) | Estudantes e banca — documentação técnica, Model Card, RIA, relatório de EDA e links para o código |
+| **Institucional** | [.../poc-inteligencia-tributaria-palmas/sefin/](https://davidnadlerprata.github.io/poc-inteligencia-tributaria-palmas/sefin/) | Gestores da Sefin — linguagem de gestão pública, sem código nem jargão acadêmico |
+
+As duas descrevem o mesmo sistema com os mesmos números; o que muda é o recorte
+e o vocabulário. A versão institucional **não contém links para o repositório** —
+um gestor não precisa ler Python para decidir sobre um piloto. A separação é
+verificada automaticamente a cada publicação.
+
+---
+
 Prova de conceito do **Projeto Integrador do Eixo II** — Opção D: predição de
 inadimplência e priorização da cobrança da dívida ativa do município de
 Palmas-TO.

@@ -1,14 +1,26 @@
 #!/usr/bin/env python3
-"""Gera o site estatico do PoC para o GitHub Pages.
+"""Gera os sites estaticos do PoC para o GitHub Pages.
 
     python site/gerar_site.py
 
-Converte os documentos Markdown do projeto em HTML com um template comum e
-transforma o notebook de EDA em pagina navegavel. A saida vai para site/_saida/,
-que o workflow de Pages publica.
+Produz DUAS publicacoes a partir do mesmo trabalho, para publicos diferentes:
 
-O site e ESTATICO: o painel Streamlit nao roda aqui, porque depende de um
-servidor Python. A pagina inicial explica isso e ensina a rodar localmente.
+  1. Academica (raiz do site) -- estudantes e banca do Projeto Integrador.
+     Documentacao tecnica, Model Card, RIA, relatorio de EDA e links para o
+     codigo-fonte no GitHub.
+
+  2. Institucional (/sefin/) -- gestores da Secretaria Municipal de Fazenda.
+     Linguagem de gestao publica, sem codigo, sem jargao academico e SEM
+     QUALQUER LINK PARA O REPOSITORIO. Um gestor nao precisa ler Python para
+     decidir sobre um piloto; oferecer isso na navegacao so distrai.
+
+A separacao e por publico, nao por sigilo: as duas versoes descrevem o mesmo
+sistema com os mesmos numeros. O que muda e o recorte e o vocabulario.
+
+Saida em site/_saida/, publicada pelo workflow pages.yml.
+
+Os sites sao ESTATICOS: o painel interativo nao roda neles, porque depende de um
+servidor Python. As paginas iniciais explicam isso.
 """
 
 from __future__ import annotations
@@ -25,14 +37,64 @@ SAIDA = FONTE / "_saida"
 
 REPOSITORIO = "https://github.com/DavidNadlerPrata/poc-inteligencia-tributaria-palmas"
 
-# (arquivo de origem, pagina de destino, titulo, rotulo no menu)
-PAGINAS = [
-    (FONTE / "index.md", "index.html", "Inteligência Tributária de Palmas-TO", "Início"),
-    (RAIZ / "docs" / "MODEL_CARD.md", "model-card.html", "Model Card", "Model Card"),
-    (RAIZ / "docs" / "RIA.md", "ria.html", "Relatório de Impacto Algorítmico", "RIA"),
-]
+DESCRICAO_PADRAO = ("Prova de conceito do Projeto Integrador do Eixo II (UFT): predição de "
+                    "inadimplência e priorização da dívida ativa de Palmas-TO, com auditoria "
+                    "de justiça algorítmica.")
 
-MENU_EXTRA = [("eda.html", "Relatório de EDA")]
+# --------------------------------------------------------------------------
+# Definicao das duas publicacoes
+# --------------------------------------------------------------------------
+# paginas: (origem, destino, titulo, rotulo no menu)
+PUBLICACOES = {
+    "academica": {
+        "diretorio": "",                       # raiz do site
+        "marca": "Inteligência Tributária · Palmas-TO",
+        "com_github": True,
+        "com_notebook": True,
+        "paginas": [
+            (FONTE / "index.md", "index.html",
+             "Inteligência Tributária de Palmas-TO", "Início"),
+            (RAIZ / "docs" / "MODEL_CARD.md", "model-card.html",
+             "Model Card", "Model Card"),
+            (RAIZ / "docs" / "RIA.md", "ria.html",
+             "Relatório de Impacto Algorítmico", "RIA"),
+        ],
+        "menu_extra": [("eda.html", "Relatório de EDA")],
+        "rodape": (
+            "<p>Prova de conceito acadêmica do Projeto Integrador do Eixo II — "
+            "Bacharelado Interdisciplinar em Inteligência Artificial, Universidade "
+            "Federal do Tocantins. Coordenação: Prof. Dr. David Nadler Prata.</p>"
+            "<p>Os números apresentados demonstram o funcionamento do sistema sobre uma "
+            "carteira sintética calibrada — não descrevem a situação fiscal real do "
+            f'município. <a href="{REPOSITORIO}">Código-fonte no GitHub</a>.</p>'
+        ),
+    },
+    "sefin": {
+        "diretorio": "sefin",
+        "marca": "Inteligência Tributária",
+        "com_github": False,                   # nenhum link para o repositorio
+        "com_notebook": False,
+        "paginas": [
+            (FONTE / "sefin" / "index.md", "index.html",
+             "Inteligência Tributária aplicada à dívida ativa", "Visão geral"),
+            (FONTE / "sefin" / "como-funciona.md", "como-funciona.html",
+             "Como funciona", "Como funciona"),
+            (FONTE / "sefin" / "salvaguardas.md", "salvaguardas.html",
+             "Salvaguardas e conformidade", "Salvaguardas"),
+            (FONTE / "sefin" / "implantacao.md", "implantacao.html",
+             "Roteiro de implantação", "Implantação"),
+        ],
+        "menu_extra": [],
+        "rodape": (
+            "<p>Prova de conceito desenvolvida pela Universidade Federal do Tocantins — "
+            "Bacharelado Interdisciplinar em Inteligência Artificial. "
+            "Coordenação: Prof. Dr. David Nadler Prata.</p>"
+            "<p>Os percentuais apresentados resultam de simulação calibrada por dados "
+            "públicos de arrecadação e não constituem projeção de receita. Estimativas "
+            "com dados reais dependem de convênio para acesso ao cadastro.</p>"
+        ),
+    },
+}
 
 MODELO = """<!DOCTYPE html>
 <html lang="pt-BR">
@@ -50,9 +112,8 @@ MODELO = """<!DOCTYPE html>
 <body>
 <nav class="nav">
   <div class="nav-conteudo">
-    <a class="nav-marca" href="index.html">Inteligência Tributária · Palmas-TO</a>
+    <a class="nav-marca" href="index.html">{marca}</a>
     {menu}
-    <a href="{repo}">GitHub</a>
   </div>
 </nav>
 <main>
@@ -60,39 +121,37 @@ MODELO = """<!DOCTYPE html>
 </main>
 <footer class="rodape">
   <div class="rodape-conteudo">
-    <p>Prova de conceito acadêmica do Projeto Integrador do Eixo II —
-    Bacharelado Interdisciplinar em Inteligência Artificial, Universidade
-    Federal do Tocantins. Coordenação: Prof. Dr. David Nadler Prata.</p>
-    <p>Os números apresentados demonstram o funcionamento do sistema sobre uma
-    carteira sintética calibrada — não descrevem a situação fiscal real do
-    município. <a href="{repo}">Código-fonte no GitHub</a>.</p>
+{rodape}
   </div>
 </footer>
 </body>
 </html>
 """
 
-DESCRICAO_PADRAO = ("Prova de conceito do Projeto Integrador do Eixo II (UFT): predição de "
-                    "inadimplência e priorização da dívida ativa de Palmas-TO, com auditoria "
-                    "de justiça algorítmica.")
 
-
-def montar_menu(pagina_atual: str) -> str:
+def montar_menu(publicacao: dict, pagina_atual: str) -> str:
     """Monta os links de navegacao, marcando a pagina corrente."""
-    itens = [(destino, rotulo) for _, destino, _, rotulo in PAGINAS] + MENU_EXTRA
+    itens = [(destino, rotulo) for _, destino, _, rotulo in publicacao["paginas"]]
+    itens += publicacao["menu_extra"]
+
     partes = []
     for destino, rotulo in itens:
         classe = ' class="ativo"' if destino == pagina_atual else ""
         partes.append(f'<a href="{destino}"{classe}>{rotulo}</a>')
+
+    if publicacao["com_github"]:
+        partes.append(f'<a href="{REPOSITORIO}">GitHub</a>')
+
     return "\n    ".join(partes)
 
 
-def ajustar_ligacoes(html: str) -> str:
+def ajustar_ligacoes(html: str, com_github: bool) -> str:
     """Reescreve os links relativos do repositorio para o contexto do site.
 
     Nos arquivos Markdown os links apontam para caminhos do repositorio
     (`docs/RIA.md`, `src/modelo.py`). No site, os documentos viram paginas e o
-    codigo-fonte passa a apontar para o GitHub.
+    codigo-fonte passa a apontar para o GitHub -- exceto na publicacao
+    institucional, onde esses links sao removidos e resta apenas o texto.
     """
     substituicoes = {
         r'href="docs/RIA\.md([^"]*)"': r'href="ria.html\1"',
@@ -103,17 +162,23 @@ def ajustar_ligacoes(html: str) -> str:
     for padrao, troca in substituicoes.items():
         html = re.sub(padrao, troca, html)
 
-    # Caminhos de codigo e diretorios do repositorio -> GitHub.
-    def para_github(correspondencia: re.Match) -> str:
-        caminho = correspondencia.group(1)
-        return f'href="{REPOSITORIO}/blob/main/{caminho}"'
+    padrao_codigo = r'<a href="(?:src|app|tests|notebooks|\.github)/[^"]+">([^<]*)</a>'
 
-    html = re.sub(r'href="((?:src|app|tests|notebooks|\.github)/[^"]+)"', para_github, html)
+    if com_github:
+        def para_github(correspondencia: re.Match) -> str:
+            return f'href="{REPOSITORIO}/blob/main/{correspondencia.group(1)}"'
+
+        html = re.sub(r'href="((?:src|app|tests|notebooks|\.github)/[^"]+)"',
+                      para_github, html)
+    else:
+        # Publicacao institucional: o link some, o texto permanece.
+        html = re.sub(padrao_codigo, r"\1", html)
+
     return html
 
 
-def converter_markdown(caminho: Path) -> tuple[str, str]:
-    """Converte um arquivo Markdown em HTML e devolve (html, primeiro paragrafo)."""
+def converter_markdown(caminho: Path, com_github: bool) -> tuple[str, str]:
+    """Converte um arquivo Markdown em HTML e devolve (html, descricao)."""
     texto = caminho.read_text(encoding="utf-8")
 
     conversor = markdown.Markdown(extensions=[
@@ -121,11 +186,11 @@ def converter_markdown(caminho: Path) -> tuple[str, str]:
         "sane_lists",
         "toc",
         "attr_list",
-        "md_in_html",     # permite Markdown dentro das divs do index
+        "md_in_html",     # permite Markdown dentro das divs das paginas
     ], extension_configs={"toc": {"permalink": False}})
 
     html = conversor.convert(texto)
-    html = ajustar_ligacoes(html)
+    html = ajustar_ligacoes(html, com_github)
 
     # Tabelas largas precisam rolar sozinhas, sem empurrar a pagina.
     html = html.replace("<table>", '<div class="tabela-rolavel"><table>')
@@ -139,25 +204,28 @@ def converter_markdown(caminho: Path) -> tuple[str, str]:
     return html, descricao
 
 
-def escrever_pagina(destino: str, titulo: str, conteudo: str, descricao: str) -> None:
-    pagina = MODELO.format(titulo=titulo, descricao=descricao, menu=montar_menu(destino),
-                           conteudo=conteudo, repo=REPOSITORIO)
-    (SAIDA / destino).write_text(pagina, encoding="utf-8")
-    print(f"  {destino}")
+def escrever_pagina(destino_dir: Path, publicacao: dict, destino: str,
+                    titulo: str, conteudo: str, descricao: str) -> None:
+    pagina = MODELO.format(titulo=titulo, descricao=descricao,
+                           marca=publicacao["marca"],
+                           menu=montar_menu(publicacao, destino),
+                           conteudo=conteudo, rodape=publicacao["rodape"])
+    (destino_dir / destino).write_text(pagina, encoding="utf-8")
+    print(f"  {(destino_dir / destino).relative_to(SAIDA)}")
 
 
-def gerar_notebook() -> bool:
+def gerar_notebook(destino_dir: Path, publicacao: dict) -> bool:
     """Converte o notebook de EDA em pagina do site."""
     caminho = RAIZ / "notebooks" / "eda_sprint2.ipynb"
     if not caminho.exists():
-        print("  ! notebook nao encontrado; pagina de EDA sera um aviso")
+        print("  ! notebook nao encontrado; pagina de EDA nao sera gerada")
         return False
 
     try:
         import nbformat
         from nbconvert import HTMLExporter
     except ImportError:
-        print("  ! nbconvert indisponivel; pagina de EDA sera um aviso")
+        print("  ! nbconvert indisponivel; pagina de EDA nao sera gerada")
         return False
 
     caderno = nbformat.read(caminho, as_version=4)
@@ -173,11 +241,32 @@ def gerar_notebook() -> bool:
         "notebooks/eda_sprint2.ipynb</a></p>"
     )
 
-    escrever_pagina("eda.html", "Relatório de EDA — Sprint 2",
+    escrever_pagina(destino_dir, publicacao, "eda.html", "Relatório de EDA — Sprint 2",
                     cabecalho + f'<div class="notebook-embutido">{corpo}</div>',
                     "Análise exploratória dos dados de arrecadação de Palmas-TO: hierarquia "
                     "de receitas, sazonalidade e perfil da dívida ativa.")
     return True
+
+
+def gerar_publicacao(nome: str, publicacao: dict) -> int:
+    destino_dir = SAIDA / publicacao["diretorio"] if publicacao["diretorio"] else SAIDA
+    destino_dir.mkdir(parents=True, exist_ok=True)
+
+    print(f"\n[{nome}]")
+    for origem, destino, titulo, _ in publicacao["paginas"]:
+        if not origem.exists():
+            print(f"  ! ausente: {origem.name}")
+            continue
+        html, descricao = converter_markdown(origem, publicacao["com_github"])
+        escrever_pagina(destino_dir, publicacao, destino, titulo, html, descricao)
+
+    if publicacao["com_notebook"]:
+        gerar_notebook(destino_dir, publicacao)
+
+    shutil.copy2(FONTE / "estilo.css", destino_dir / "estilo.css")
+    print(f"  {(destino_dir / 'estilo.css').relative_to(SAIDA)}")
+
+    return len(list(destino_dir.glob("*.html")))
 
 
 def main() -> int:
@@ -185,27 +274,16 @@ def main() -> int:
         shutil.rmtree(SAIDA)
     SAIDA.mkdir(parents=True)
 
-    print("Gerando o site...")
+    print("Gerando os sites...")
 
-    for origem, destino, titulo, _ in PAGINAS:
-        if not origem.exists():
-            print(f"  ! ausente: {origem.name}")
-            continue
-        html, descricao = converter_markdown(origem)
-        escrever_pagina(destino, titulo, html, descricao)
-
-    gerar_notebook()
-
-    shutil.copy2(FONTE / "estilo.css", SAIDA / "estilo.css")
-    print("  estilo.css")
+    total = 0
+    for nome, publicacao in PUBLICACOES.items():
+        total += gerar_publicacao(nome, publicacao)
 
     # Impede o Jekyll de reprocessar a saida no GitHub Pages.
     (SAIDA / ".nojekyll").write_text("", encoding="utf-8")
 
-    paginas = sorted(p.name for p in SAIDA.glob("*.html"))
-    print(f"\nPronto: {len(paginas)} páginas em {SAIDA.relative_to(RAIZ)}")
-    for nome in paginas:
-        print(f"  - {nome}")
+    print(f"\nPronto: {total} páginas em {SAIDA.relative_to(RAIZ)}")
     return 0
 
 
