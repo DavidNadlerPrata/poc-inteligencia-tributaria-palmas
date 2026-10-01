@@ -113,6 +113,18 @@ não é e por quê, do que a que finge ter dados que ninguém tem.
 Detalhes em [`src/sintetico.py`](src/sintetico.py) e em
 [`docs/RIA.md`](docs/RIA.md), seção 1.
 
+A carteira gerada fica **versionada** em
+[`data/carteira_contribuintes.csv`](data/carteira_contribuintes.csv) (20.000
+registros, 2 MB): dá para abri-la direto no Excel, no R ou no pandas sem rodar
+o pipeline. Como é gerada e não coletada, não contém dado pessoal. Os demais
+artefatos — banco, modelos, fila de cobrança — continuam fora do repositório,
+por serem derivados e regeneráveis.
+
+Um teste verifica a cada execução que o arquivo versionado continua idêntico ao
+que o gerador produz. Se alguém ajustar os parâmetros sem regenerar o CSV, a
+suíte acusa a divergência em vez de deixar o PoC rodar sobre dados que não
+correspondem ao código.
+
 ---
 
 ## Arquitetura
@@ -156,6 +168,7 @@ Detalhes em [`src/sintetico.py`](src/sintetico.py) e em
 | `notebooks/eda_sprint2.ipynb` | **Relatório de EDA da Sprint 2**, executado |
 | `notebooks/gerar_eda.py` | Script que gera o notebook (diff legível no Git) |
 | `tests/` | Suíte com 97 testes — `test_etica.py` é o mais importante |
+| `data/carteira_contribuintes.csv` | **Carteira sintética versionada** — 20.000 registros, pronta para abrir |
 | `tests/fixtures/` | Amostra de dados reais para o CI rodar sem acessar a API |
 | `.github/workflows/ci.yml` | Integração contínua (GitHub Actions) |
 | `pyproject.toml` | Configuração do pytest, do linter e da cobertura |

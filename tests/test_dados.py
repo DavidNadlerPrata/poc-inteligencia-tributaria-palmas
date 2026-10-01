@@ -92,6 +92,49 @@ class TestCoerenciaDaDivida:
         assert (com_divida["exercicios_inadimplentes_5a"] > 0).all()
 
 
+class TestCarteiraVersionada:
+    """O CSV versionado precisa corresponder ao que o gerador produz hoje.
+
+    A carteira fica no repositorio para que se possa abri-la direto, sem rodar
+    o pipeline. Isso cria um risco: alguem ajusta os parametros do gerador, nao
+    regenera o arquivo, e o PoC passa a rodar sobre dados que nao correspondem
+    ao codigo -- uma divergencia silenciosa, que nenhum outro teste pegaria.
+
+    Para corrigir uma falha aqui:  python -c "import sys; sys.path.insert(0,'src'); import sintetico; sintetico.gerar(forcar=True)"
+    """
+
+    @pytest.fixture(scope="class")
+    def do_disco(self):
+        if not config.CSV_CARTEIRA.exists():
+            pytest.skip("carteira versionada ausente; gere com sintetico.gerar()")
+        return pd.read_csv(config.CSV_CARTEIRA, sep=";")
+
+    @pytest.fixture(scope="class")
+    def recem_gerada(self):
+        return sintetico.gerar_carteira()   # tamanho e semente padrao
+
+    def test_mesmo_numero_de_registros(self, do_disco, recem_gerada):
+        assert len(do_disco) == len(recem_gerada) == config.TAMANHO_AMOSTRA
+
+    def test_mesmas_colunas_na_mesma_ordem(self, do_disco, recem_gerada):
+        assert list(do_disco.columns) == list(recem_gerada.columns)
+
+    def test_conteudo_identico(self, do_disco, recem_gerada):
+        """Compara com tolerancia numerica: a ida e volta pelo CSV arredonda
+        floats, e o arquivo pode ter sido escrito em outra plataforma."""
+        pd.testing.assert_frame_equal(
+            do_disco.reset_index(drop=True), recem_gerada.reset_index(drop=True),
+            check_dtype=False, rtol=1e-6,
+        )
+
+    def test_sem_dado_pessoal(self, do_disco):
+        """O arquivo esta publico no repositorio: nada que identifique alguem."""
+        proibidos = {"cpf", "cnpj", "nome", "endereco", "email", "telefone",
+                     "inscricao_imobiliaria", "matricula"}
+        assert not (proibidos & {c.lower() for c in do_disco.columns})
+        assert do_disco["id_contribuinte"].str.fullmatch(r"[0-9a-f]{16}").all()
+
+
 class TestCalibracao:
     """A carteira precisa refletir os agregados oficiais da Sefin."""
 

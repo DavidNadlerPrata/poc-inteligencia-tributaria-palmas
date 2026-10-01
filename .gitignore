@@ -9,6 +9,12 @@ models/*.json
 !data/.gitkeep
 !models/.gitkeep
 
+# A carteira sintetica e versionada de proposito: e a base analitica do PoC, e
+# ter o arquivo no repositorio permite abri-lo direto (Excel, R, pandas) sem
+# rodar o pipeline. Nao contem dado pessoal -- e gerada, nao coletada.
+# tests/test_dados.py verifica que ela continua em sincronia com o gerador.
+!data/carteira_contribuintes.csv
+
 # Logs
 *.log
 
