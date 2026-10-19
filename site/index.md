@@ -6,6 +6,7 @@
 
 <div class="botoes">
 <a class="botao botao-primario" href="https://github.com/DavidNadlerPrata/poc-inteligencia-tributaria-palmas">Ver o código no GitHub</a>
+<a class="botao botao-secundario" href="manual-coleta.html">Manual de coleta</a>
 <a class="botao botao-secundario" href="eda.html">Relatório de EDA</a>
 <a class="botao botao-secundario" href="model-card.html">Model Card</a>
 <a class="botao botao-secundario" href="ria.html">Relatório de Impacto</a>
@@ -58,7 +59,7 @@ educação fiscal, subsidiar política pública.
 
 A discussão completa, incluindo a impossibilidade matemática de satisfazer
 paridade e calibração ao mesmo tempo, está no
-[Relatório de Impacto Algorítmico](ria.html#secao-2-analise-de-justica-algoritmica).
+[Relatório de Impacto Algorítmico](ria.html#seção-2--análise-de-justiça-algorítmica).
 
 ---
 
@@ -155,7 +156,7 @@ por quê, do que a que finge ter dados que ninguém tem.
 |---|---|---|
 | 0 — Concepção | M1 — Cálculo Numérico | Normalização vetorial e distância ao centro urbano |
 | 1 — Arquitetura e dados | M2, M3, M4 | DDL em 3FN, índices, estrutura modular do repositório |
-| 2 — Pipeline ETL | M5 — Coleta e ETL | Coleta na API real e [relatório de EDA](eda.html) |
+| 2 — Pipeline ETL | M5 — Coleta e ETL | [Manual de coleta](manual-coleta.html), coleta na API real e [relatório de EDA](eda.html) |
 | 3 — Modelo e MVP | M6 — Introdução à IA | Dois modelos e painel Streamlit |
 | 4 — Governança | M7 — Ética e LGPD | [Model Card](model-card.html) e [RIA](ria.html) |
 

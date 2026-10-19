@@ -172,6 +172,7 @@ correspondem ao código.
 | `tests/fixtures/` | Amostra de dados reais para o CI rodar sem acessar a API |
 | `.github/workflows/ci.yml` | Integração contínua (GitHub Actions) |
 | `pyproject.toml` | Configuração do pytest, do linter e da cobertura |
+| `docs/MANUAL_COLETA.md` | **Manual de coleta das APIs da Prefeitura** — guia da Sprint 2 |
 | `docs/MODEL_CARD.md` | **Componente B** do portfólio |
 | `docs/RIA.md` | **Componente C** do portfólio |
 | `executar_poc.py` | Orquestrador do pipeline completo |

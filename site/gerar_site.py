@@ -27,9 +27,30 @@ from __future__ import annotations
 
 import re
 import shutil
+import unicodedata
 from pathlib import Path
 
 import markdown
+
+
+def slug_github(texto: str, separador: str) -> str:
+    """Gera identificadores de cabecalho no mesmo esquema do GitHub.
+
+    O padrao do Python-Markdown remove acentos e colapsa espacos, enquanto o
+    GitHub preserva acentos e mantem um separador por espaco. A diferenca
+    quebra as ancoras dos documentos: um sumario escrito para funcionar no
+    GitHub aponta para ids que o site nao tem.
+
+    Como os mesmos arquivos .md sao lidos no repositorio e publicados aqui,
+    alinhamos o site ao GitHub -- e nao o contrario.
+
+        "API antiga — o histórico"  ->  "api-antiga--o-histórico"
+
+    (dois separadores porque o travessao sai e deixa os dois espacos.)
+    """
+    texto = unicodedata.normalize("NFC", texto).lower()
+    texto = re.sub(r"[^\w\s-]", "", texto, flags=re.UNICODE)
+    return re.sub(r"\s", separador, texto)
 
 RAIZ = Path(__file__).resolve().parent.parent
 FONTE = RAIZ / "site"
@@ -54,6 +75,8 @@ PUBLICACOES = {
         "paginas": [
             (FONTE / "index.md", "index.html",
              "Inteligência Tributária de Palmas-TO", "Início"),
+            (RAIZ / "docs" / "MANUAL_COLETA.md", "manual-coleta.html",
+             "Manual de coleta de dados da Prefeitura de Palmas", "Manual de coleta"),
             (RAIZ / "docs" / "MODEL_CARD.md", "model-card.html",
              "Model Card", "Model Card"),
             (RAIZ / "docs" / "RIA.md", "ria.html",
@@ -187,7 +210,7 @@ def converter_markdown(caminho: Path, com_github: bool) -> tuple[str, str]:
         "toc",
         "attr_list",
         "md_in_html",     # permite Markdown dentro das divs das paginas
-    ], extension_configs={"toc": {"permalink": False}})
+    ], extension_configs={"toc": {"permalink": False, "slugify": slug_github}})
 
     html = conversor.convert(texto)
     html = ajustar_ligacoes(html, com_github)
