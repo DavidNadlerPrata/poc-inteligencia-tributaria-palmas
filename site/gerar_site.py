@@ -76,7 +76,7 @@ PUBLICACOES = {
             (FONTE / "index.md", "index.html",
              "Inteligência Tributária de Palmas-TO", "Início"),
             (RAIZ / "docs" / "MANUAL_COLETA.md", "manual-coleta.html",
-             "Manual de coleta de dados da Prefeitura de Palmas", "Manual de coleta"),
+             "Manual de coleta de dados da Prefeitura de Palmas", "Coleta"),
             (RAIZ / "docs" / "AULA_SPRINT4_E3.md", "aula-sprint4-e3.html",
              "Aula — Sprint 4, E3: notebook e modelo serializado", "Aula Sprint 4"),
             (RAIZ / "docs" / "MODEL_CARD.md", "model-card.html",
@@ -84,7 +84,7 @@ PUBLICACOES = {
             (RAIZ / "docs" / "RIA.md", "ria.html",
              "Relatório de Impacto Algorítmico", "RIA"),
         ],
-        "menu_extra": [("eda.html", "Relatório de EDA")],
+        "menu_extra": [("eda.html", "EDA")],
         "rodape": (
             "<p>Prova de conceito acadêmica do Projeto Integrador do Eixo II — "
             "Bacharelado Interdisciplinar em Inteligência Artificial, Universidade "
@@ -202,6 +202,33 @@ def ajustar_ligacoes(html: str, com_github: bool) -> str:
     return html
 
 
+def marcar_caixas(html: str) -> str:
+    """Transforma itens "[ ] texto" em caixas de selecao de verdade.
+
+    O Python-Markdown nao conhece a sintaxe de lista de tarefas do GitHub e
+    deixaria os colchetes como texto. As caixas ficam habilitadas: o aluno pode
+    ir marcando o checklist na propria pagina.
+    """
+    html = re.sub(r"<li>\s*(?:<p>)?\[ \]\s*",
+                  '<li class="tarefa"><input type="checkbox" aria-label="concluído"> ', html)
+    html = re.sub(r"<li>\s*(?:<p>)?\[[xX]\]\s*",
+                  '<li class="tarefa"><input type="checkbox" checked aria-label="concluído"> ',
+                  html)
+    return re.sub(r'<ul>(\s*<li class="tarefa">)', r'<ul class="tarefas">\1', html)
+
+
+def montar_sumario(itens: list[dict]) -> str:
+    """Sumario com as secoes de segundo nivel, para paginas longas."""
+    secoes = [filho for item in itens for filho in item.get("children", [])
+              if filho["level"] == 2]
+    # So documentos longos ganham sumario: nas paginas de entrada ele seria ruido.
+    if len(secoes) < 9 or any(s["name"].lower().startswith("sumário") for s in secoes):
+        return ""        # pagina curta, ou o documento ja traz o proprio sumario
+    linhas = "\n".join(f'<li><a href="#{s["id"]}">{s["name"]}</a></li>' for s in secoes)
+    return ('<nav class="sumario" aria-label="Sumário"><p>Nesta página</p>'
+            f"<ol>\n{linhas}\n</ol></nav>\n")
+
+
 def converter_markdown(caminho: Path, com_github: bool) -> tuple[str, str]:
     """Converte um arquivo Markdown em HTML e devolve (html, descricao)."""
     texto = caminho.read_text(encoding="utf-8")
@@ -212,14 +239,25 @@ def converter_markdown(caminho: Path, com_github: bool) -> tuple[str, str]:
         "toc",
         "attr_list",
         "md_in_html",     # permite Markdown dentro das divs das paginas
-    ], extension_configs={"toc": {"permalink": False, "slugify": slug_github}})
+        "codehilite",     # realce de sintaxe gerado aqui, sem JavaScript
+    ], extension_configs={
+        "toc": {"permalink": False, "slugify": slug_github},
+        "codehilite": {"guess_lang": False, "css_class": "codigo"},
+    })
 
     html = conversor.convert(texto)
     html = ajustar_ligacoes(html, com_github)
+    html = marcar_caixas(html)
 
     # Tabelas largas precisam rolar sozinhas, sem empurrar a pagina.
     html = html.replace("<table>", '<div class="tabela-rolavel"><table>')
     html = html.replace("</table>", "</table></div>")
+
+    # Sumario logo antes da primeira secao.
+    sumario = montar_sumario(conversor.toc_tokens)
+    if sumario and "<h2" in html:
+        posicao = html.index("<h2")
+        html = html[:posicao] + sumario + html[posicao:]
 
     # Primeiro paragrafo de texto vira a descricao da pagina.
     limpo = re.sub(r"<[^>]+>", "", html)
@@ -227,6 +265,19 @@ def converter_markdown(caminho: Path, com_github: bool) -> tuple[str, str]:
     descricao = (linhas[0][:180] if linhas else DESCRICAO_PADRAO).replace('"', "'")
 
     return html, descricao
+
+
+def css_do_realce() -> str:
+    """Folha de estilo do realce de sintaxe, nos modos claro e escuro."""
+    from pygments.formatters import HtmlFormatter
+
+    claro = HtmlFormatter(style="friendly", nobackground=True).get_style_defs(".codigo")
+    escuro = HtmlFormatter(style="monokai", nobackground=True).get_style_defs(".codigo")
+    return ("\n/* ---- Realce de sintaxe (gerado pelo Pygments) ---- */\n"
+            f"{claro}\n"
+            "@media (prefers-color-scheme: dark) {\n"
+            f"{escuro}\n"
+            "}\n")
 
 
 def escrever_pagina(destino_dir: Path, publicacao: dict, destino: str,
@@ -288,7 +339,8 @@ def gerar_publicacao(nome: str, publicacao: dict) -> int:
     if publicacao["com_notebook"]:
         gerar_notebook(destino_dir, publicacao)
 
-    shutil.copy2(FONTE / "estilo.css", destino_dir / "estilo.css")
+    estilo = (FONTE / "estilo.css").read_text(encoding="utf-8") + css_do_realce()
+    (destino_dir / "estilo.css").write_text(estilo, encoding="utf-8")
     print(f"  {(destino_dir / 'estilo.css').relative_to(SAIDA)}")
 
     return len(list(destino_dir.glob("*.html")))

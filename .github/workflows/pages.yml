@@ -47,7 +47,7 @@ jobs:
           cache-dependency-path: requirements-dev.txt
 
       - name: Instalar dependências
-        run: pip install markdown nbformat nbconvert
+        run: pip install markdown pygments nbformat nbconvert
 
       - name: Gerar as páginas
         run: python site/gerar_site.py

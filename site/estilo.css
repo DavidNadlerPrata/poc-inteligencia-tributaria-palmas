@@ -104,6 +104,9 @@ h1, h2, h3, h4 {
   font-weight: 650;
 }
 
+/* O menu e fixo: sem esta margem, ele cobre o titulo ao navegar por ancora. */
+h1, h2, h3, h4 { scroll-margin-top: 84px; }
+
 h1 { font-size: 2.1rem; margin: 0 0 8px; letter-spacing: -0.02em; }
 h2 {
   font-size: 1.4rem;
@@ -285,6 +288,38 @@ figcaption {
   text-align: center;
 }
 
+/* ---------------------------- Sumario ---------------------------- */
+.sumario {
+  border: 1px solid var(--borda);
+  border-radius: 10px;
+  background: var(--plano);
+  padding: 14px 20px;
+  margin: 26px 0 8px;
+}
+
+.sumario p {
+  margin: 0 0 6px;
+  font-size: 0.8rem;
+  font-weight: 620;
+  color: var(--tinta-secundaria);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.sumario ol { margin: 0; padding-left: 20px; columns: 2; column-gap: 32px; }
+.sumario li { margin-bottom: 4px; font-size: 0.92rem; break-inside: avoid; }
+.sumario a { text-decoration: none; }
+.sumario a:hover { text-decoration: underline; }
+
+/* ---------------------------- Checklist ---------------------------- */
+ul.tarefas { list-style: none; padding-left: 4px; }
+li.tarefa { display: flex; gap: 10px; align-items: baseline; }
+li.tarefa input { flex: none; width: 16px; height: 16px; accent-color: var(--azul); transform: translateY(2px); }
+
+/* ---------------------------- Blocos de codigo realcados ---------------------------- */
+.codigo { margin: 0 0 18px; }
+.codigo pre { margin: 0; }
+
 /* ---------------------------- Rodape ---------------------------- */
 .rodape {
   border-top: 1px solid var(--borda);
@@ -312,6 +347,7 @@ figcaption {
 .notebook-embutido img { max-width: 100%; height: auto; }
 
 @media (max-width: 640px) {
+  .sumario ol { columns: 1; }
   h1 { font-size: 1.7rem; }
   main { padding: 28px 18px 60px; }
   .nav-conteudo { gap: 14px; }

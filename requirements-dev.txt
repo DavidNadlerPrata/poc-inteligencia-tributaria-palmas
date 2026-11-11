@@ -10,3 +10,5 @@ ipykernel>=6.29
 
 # Gerador do site estatico (site/gerar_site.py)
 markdown>=3.5
+nbconvert>=7.0
+pygments>=2.15

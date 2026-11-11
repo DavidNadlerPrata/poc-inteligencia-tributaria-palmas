@@ -5,6 +5,22 @@ Inteligência Artificial): *"Notebook Jupyter com a trilha completa (EDA →
 pré-processamento → treinamento → avaliação) e o modelo salvo (.pkl/.joblib)
 versionado em /models."*
 
+> **Sobre a numeração.** No plano de ensino original esta etapa aparece como
+> Sprint 3; o enunciado da tarefa a numera como Sprint 4 e chama a etapa de
+> governança de Sprint 5. Este material segue o enunciado.
+
+**Como usar este material.** Os blocos de código formam uma trilha única: copie
+cada um para uma célula do notebook, na ordem em que aparecem, e ele executa do
+início ao fim. Os blocos que começam com `# ERRADO` ou `# ARMADILHA` são
+contraexemplos — leia, não copie. Todos os números citados aqui saíram da
+execução destes mesmos blocos sobre a carteira versionada no repositório, e um
+teste automatizado reexecuta a trilha a cada alteração.
+
+**O que você precisa ter antes:** o repositório clonado, as dependências
+instaladas (`pip install -r requirements.txt`) e a carteira em
+`data/carteira_contribuintes.csv`. Crie o notebook em
+`notebooks/sprint4_modelos.ipynb` — os caminhos relativos da trilha partem daí.
+
 ---
 
 ## Antes de começar: o E3 não é só o arquivo
@@ -19,29 +35,38 @@ Então o critério não é "o notebook roda". É:
 > Alguém que não participou do projeto consegue abrir o notebook, entender cada
 > decisão, executá-lo do início ao fim e obter os mesmos números?
 
-Se a resposta for sim, o E3 está pronto.
+O enunciado pede **dois modelos**, e a trilha entrega os dois:
+
+| Modelo | Pergunta | Universo | Alvo |
+|---|---|---|---|
+| 1 — classificação de inadimplência | O contribuinte ficará inadimplente no próximo exercício? | Todos os contribuintes | `inadimplente_proximo_exercicio` |
+| 2 — scoring de recuperabilidade | Uma dívida já inscrita será recuperada em 12 meses? | Só quem tem dívida inscrita | `divida_recuperada_12m` |
+
+As seções 3 a 7 constroem o Modelo 1 passo a passo. A seção 8 aplica a mesma
+receita ao Modelo 2, reaproveitando as funções já escritas.
 
 ---
 
-## A estrutura: oito seções
+## A estrutura: nove seções
 
 Monte o notebook nesta ordem. Ela não é arbitrária — cada seção depende da
 anterior, e inverter duas delas é exatamente como se cria vazamento de dados.
 
 | # | Seção | Entregável |
 |---|---|---|
-| 1 | Cabeçalho e proveniência dos dados | E3 |
-| 2 | Análise exploratória orientada a decisão | E3 |
+| 1 | Cabeçalho, proveniência e preparação | E3 |
+| 2 | Carga, exclusão do grupo protegido e EDA orientada a decisão | E3 |
 | 3 | **Split temporal** | **E1** |
 | 4 | Pré-processamento dentro do pipeline | E1 |
-| 5 | Modelos baseline | E1 |
-| 6 | Modelo final e tunagem | E2 |
-| 7 | Avaliação e métricas por subgrupo | E2 |
-| 8 | Serialização e versionamento | E3 |
+| 5 | Baselines comparados na validação | E1 |
+| 6 | Modelo com tunagem e escolha do vencedor | E2 |
+| 7 | Limiar, avaliação final e métricas por subgrupo | E2 |
+| 8 | O segundo modelo: scoring de recuperabilidade | E2 |
+| 9 | Serialização e versionamento | E3 |
 
 ---
 
-## Seção 1 — Cabeçalho e proveniência
+## Seção 1 — Cabeçalho, proveniência e preparação
 
 A primeira célula é Markdown, e ela tem uma exigência explícita no enunciado da
 sprint: *"Se a camada individual do dado for sintética, declarem isso já no
@@ -74,14 +99,39 @@ modelo funcionaria no mundo real. Qualquer estimativa de desempenho real exige
 recalibração sobre dados reais, mediante convênio.
 ```
 
-Ainda nesta seção, fixe a semente e registre as versões:
+A primeira célula de código reúne as importações, fixa a semente, define os
+caminhos e registra as versões:
 
 ```python
+import json
 import platform
-import joblib, numpy as np, pandas as pd, sklearn
+from datetime import datetime
+from pathlib import Path
+
+import joblib
+import numpy as np
+import pandas as pd
+import sklearn
+from sklearn.base import clone
+from sklearn.compose import ColumnTransformer
+from sklearn.dummy import DummyClassifier
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.impute import SimpleImputer
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import (accuracy_score, confusion_matrix, f1_score,
+                             precision_score, recall_score, roc_auc_score)
+from sklearn.model_selection import GridSearchCV, TimeSeriesSplit, cross_validate
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import OneHotEncoder, StandardScaler
+from sklearn.tree import DecisionTreeClassifier
 
 SEMENTE = 42
 np.random.seed(SEMENTE)
+
+# O notebook mora em notebooks/; dados e modelos ficam um nível acima.
+DADOS = Path("../data")
+MODELOS = Path("../models")
+MODELOS.mkdir(exist_ok=True)
 
 print(f"python  {platform.python_version()}")
 print(f"pandas  {pd.__version__}")
@@ -89,39 +139,62 @@ print(f"sklearn {sklearn.__version__}")
 print(f"joblib  {joblib.__version__}")
 ```
 
-Sem isso, "não reproduz na minha máquina" vira discussão sem dados.
+Sem a semente e as versões, "não reproduz na minha máquina" vira discussão sem
+dados. E só caminhos relativos: um `C:\Users\...` no notebook quebra na máquina
+de qualquer outra pessoa, inclusive na da banca.
 
 ---
 
-## Seção 2 — EDA orientada a decisão
+## Seção 2 — Carga, exclusão do grupo protegido e EDA
 
-Você já fez a análise exploratória na Sprint 2. **Não repita aqui.** Esta seção
-é curta e tem um único propósito: mostrar os fatos que justificam as decisões de
-modelagem que vêm a seguir.
-
-Para cada gráfico ou tabela, pergunte: *que decisão isto sustenta?* Se não
-sustenta nenhuma, tire do notebook.
-
-O que vale incluir:
+### Carregue e exclua antes de qualquer outra coisa
 
 ```python
-# 1) Balanceamento do alvo -- decide se precisa de class_weight
-print(dados["divida_recuperada_12m"].value_counts(normalize=True))
+dados = pd.read_csv(DADOS / "carteira_contribuintes.csv", sep=";")
+print(f"{len(dados)} registros, {dados.shape[1]} colunas")
 
-# 2) Volume útil -- o modelo de recuperabilidade só vale para quem tem dívida
-com_divida = dados[dados["valor_divida_consolidada"] > 0]
-print(f"universo: {len(com_divida)} de {len(dados)} registros")
+# Beneficiários do IPTU Social saem ANTES de qualquer split, EDA ou treino.
+universo = dados[dados["iptu_social"] == 0].copy()
+print(f"excluídos pelo IPTU Social: {len(dados) - len(universo)} | universo: {len(universo)}")
 
-# 3) Grupos protegidos -- quantos saem antes do treino
-print(f"IPTU Social (excluídos): {dados['iptu_social'].sum()}")
+assert universo["iptu_social"].sum() == 0, "grupo protegido ainda presente!"
 ```
 
-Feche a seção com uma célula Markdown listando as decisões tomadas. Exemplo:
+A ordem importa. Idosos, aposentados, pensionistas e pessoas com deficiência de
+baixa renda são isentos e não podem ser alvo de ação preditiva de cobrança. Se
+a exclusão vier depois do split, eles já estarão dentro do conjunto de treino —
+e nenhuma mensagem de erro vai avisar. Daqui em diante, **toda a trilha parte de
+`universo`**, nunca de `dados`.
+
+Nesta carteira saem 1.393 dos 20.000 registros, e o universo de trabalho
+fica com 18.607.
+
+### EDA orientada a decisão
+
+Você já fez a análise exploratória na Sprint de coleta e ETL. **Não repita
+aqui.** Esta seção é curta e tem um único propósito: mostrar os fatos que
+justificam as decisões de modelagem que vêm a seguir. Para cada gráfico ou
+tabela, pergunte: *que decisão isto sustenta?* Se não sustenta nenhuma, tire do
+notebook.
+
+```python
+# 1) Balanceamento dos alvos -- decide se precisa de class_weight ou reamostragem
+print(universo["inadimplente_proximo_exercicio"].value_counts(normalize=True).round(3))
+
+# 2) Universo do segundo modelo -- só faz sentido para quem tem dívida inscrita
+tem_divida = universo["valor_divida_consolidada"] > 0
+print(f"com dívida inscrita: {tem_divida.sum()} de {len(universo)}")
+print(universo.loc[tem_divida, "divida_recuperada_12m"].value_counts(normalize=True).round(3))
+```
+
+Feche a seção com uma célula Markdown listando as decisões tomadas:
 
 > **Decisões que a EDA sustenta**
-> 1. O alvo está equilibrado (≈50/50) → não usaremos reamostragem.
-> 2. O modelo de recuperabilidade usa só os ~16 mil registros com dívida inscrita.
-> 3. Os beneficiários do IPTU Social saem antes de qualquer treino.
+>
+> 1. Os dois alvos estão equilibrados (50,7% de inadimplentes) → não
+>    usaremos reamostragem nem `class_weight`.
+> 2. O Modelo 2 usa só os 15.361 registros com dívida inscrita.
+> 3. Os 1.393 beneficiários do IPTU Social saíram antes de qualquer treino.
 
 ---
 
@@ -134,15 +207,16 @@ vai perguntar."*
 ### 3.1 Por que `train_test_split` aleatório reprova aqui
 
 ```python
-# ERRADO para este problema
+# ERRADO para este problema -- não copie
 from sklearn.model_selection import train_test_split
 X_tr, X_te, y_tr, y_te = train_test_split(X, y, test_size=0.25, stratify=y)
 ```
 
 O split aleatório mistura períodos: o modelo treina com dados de 2026 e é
 testado em dados de 2024. Na operação real isso é impossível — você só tem o
-passado para prever o futuro. Um split aleatório **superestima** o desempenho,
-porque o modelo viu padrões de um período que, na vida real, ainda não existiria.
+passado para prever o futuro. Com dados reais, um split aleatório
+**superestima** o desempenho, porque o modelo viu padrões de um período que, na
+vida real, ainda não existiria.
 
 > **Nota sobre o PoC de referência.** O `src/modelo.py` do PoC usa
 > `train_test_split` estratificado, e **não atende** a este requisito. Ele foi
@@ -157,20 +231,22 @@ A carteira sintética **não tem coluna de data de competência**. É tentador
 derivar uma a partir de `tempo_inadimplencia_dias`:
 
 ```python
-# ARMADILHA -- parece razoável e produz um split inútil
+# ARMADILHA -- parece razoável e produz um split inútil. Não copie.
 dados["data_inscricao"] = HOJE - pd.to_timedelta(dados["tempo_inadimplencia_dias"], unit="D")
 ```
 
-Medimos o resultado disso:
+Medimos o resultado disso nos registros com dívida, cortando nos 20% mais
+recentes:
 
 | Conjunto | Tempo médio de inadimplência | Taxa de recuperação |
 |---|---|---|
-| treino (80% mais antigo) | 1.057 dias | 47,8% |
+| treino (80% mais antigo) | 1.058 dias | 47,8% |
 | teste (20% mais recente) | 216 dias | 66,8% |
 
-O corte temporal passou a separar **exatamente pelo preditor dominante**. O
-teste ficou só com dívidas recentes, cuja taxa de recuperação é muito maior. As
-distribuições são incomparáveis, e qualquer métrica calculada ali é enganosa.
+O corte temporal passou a separar **exatamente pelo preditor mais forte** do
+Modelo 2. O teste ficou só com dívidas recentes, cuja taxa de recuperação é
+muito maior. As distribuições são incomparáveis, e qualquer métrica calculada
+ali é enganosa.
 
 **A lição geral:** o eixo temporal precisa ser **independente** dos atributos
 preditivos. Se o seu "tempo" é função de uma feature, não é um eixo temporal —
@@ -182,37 +258,56 @@ No dado real, a dívida ativa é uma **foto mensal**: cada registro diz como o
 contribuinte estava em determinado mês de competência. É esse campo que define o
 eixo temporal.
 
-Se sua base não tem, acrescente ao gerador um mês de competência independente:
+A carteira sintética não tem esse campo, então a trilha acrescenta um mês de
+competência independente de qualquer atributo:
 
 ```python
-import numpy as np
-import pandas as pd
-
 rng = np.random.default_rng(SEMENTE)
 
 # Competência: mês de referência do registro. Independente de qualquer atributo.
 meses = pd.date_range("2024-01-01", "2026-10-01", freq="MS")
-dados["competencia"] = rng.choice(meses, size=len(dados))
+universo["competencia"] = rng.choice(meses, size=len(universo))
+
+# Ordem cronológica: a validação temporal da seção 3.6 depende dela.
+universo = universo.sort_values("competencia").reset_index(drop=True)
 ```
 
 Documente essa escolha no notebook. Inventar um eixo temporal é aceitável em
 PoC — **esconder que você inventou, não é**.
 
+> **O que este eixo ensina e o que ele não prova.** Como a competência foi
+> sorteada, não existe deriva temporal nesta base: o passado e o futuro têm a
+> mesma distribuição, e o split temporal equivale, por construção, a um split
+> aleatório. Medimos: em 20 splits aleatórios do mesmo tamanho, o ROC-AUC de
+> teste variou de 0,692 a 0,723; o do split temporal,
+> 0,707, cai dentro dessa faixa. Ou seja, aqui você exercita a
+> **mecânica** correta — cortar por data, validar no futuro, provar a ausência
+> de vazamento —, mas não vai observar o efeito que ela protege. Com dados
+> reais, em que a economia e a política de cobrança mudam de um ano para outro,
+> a diferença aparece. Diga isso no notebook: a banca valoriza quem sabe o que o
+> próprio experimento não demonstra.
+
+> **Repare na largura dessa faixa.** Ela mostra quanto uma métrica de teste
+> oscila só por sorteio, sem que nada tenha mudado no modelo. Guarde esse número
+> para a seção 6: diferenças de poucos milésimos entre dois modelos estão
+> dentro do ruído.
+
 ### 3.4 Fazendo o corte
 
 ```python
-CORTE = pd.Timestamp("2026-04-01")      # últimos ~6 meses para teste
+CORTE_TESTE = pd.Timestamp("2026-04-01")      # os últimos 7 meses ficam para teste
 
-treino = com_divida[com_divida["competencia"] <  CORTE]
-teste  = com_divida[com_divida["competencia"] >= CORTE]
+treino = universo[universo["competencia"] < CORTE_TESTE]
+teste = universo[universo["competencia"] >= CORTE_TESTE]
 
-print(f"treino: {len(treino):5d} ({len(treino)/len(com_divida):.0%})"
+print(f"treino: {len(treino):5d} ({len(treino) / len(universo):.0%})"
       f" | até {treino['competencia'].max().date()}")
-print(f"teste:  {len(teste):5d} ({len(teste)/len(com_divida):.0%})"
+print(f"teste:  {len(teste):5d} ({len(teste) / len(universo):.0%})"
       f" | de {teste['competencia'].min().date()}")
 ```
 
-Resultado esperado com esta base: 80% treino / 20% teste.
+Com esta base: 14.877 registros de treino (80%) e 3.730 de
+teste (20%).
 
 ### 3.5 Provando que não há vazamento
 
@@ -223,30 +318,37 @@ notebook:
 # 1) Não há sobreposição temporal
 assert treino["competencia"].max() < teste["competencia"].min(), "sobreposição temporal!"
 
-# 2) O mesmo contribuinte não está nos dois lados
-vazados = set(treino["id_contribuinte"]) & set(teste["id_contribuinte"])
-assert not vazados, f"{len(vazados)} contribuintes em treino e teste"
+# 2) Nenhum registro está nos dois lados
+#    (nesta carteira cada contribuinte aparece uma única vez)
+repetidos = set(treino["id_contribuinte"]) & set(teste["id_contribuinte"])
+assert not repetidos, f"{len(repetidos)} contribuintes em treino e teste"
 
 # 3) As distribuições são comparáveis (se não forem, o corte está ruim)
-comparacao = pd.DataFrame({
-    "treino": treino[["tempo_inadimplencia_dias", "valor_divida_consolidada",
-                      "divida_recuperada_12m"]].mean(),
-    "teste":  teste[["tempo_inadimplencia_dias", "valor_divida_consolidada",
-                     "divida_recuperada_12m"]].mean(),
-})
-print(comparacao)
+colunas = ["valor_venal", "exercicios_inadimplentes_5a", "inadimplente_proximo_exercicio"]
+comparacao_split = pd.DataFrame({"treino": treino[colunas].mean(),
+                                 "teste": teste[colunas].mean()}).round(3)
+print(comparacao_split)
 ```
 
 Com o eixo de competência, a comparação fica assim — e é isso que você quer ver:
 
-| Métrica | Treino | Teste |
+| Média | Treino | Teste |
 |---|---|---|
-| Tempo de inadimplência (dias) | 886 | 903 |
-| Dívida média (R$) | 3.931 | 3.926 |
-| Taxa de recuperação | 51,9% | 50,5% |
+| Valor venal (R$) | 293.925 | 291.649 |
+| Exercícios inadimplentes (5 anos) | 1,65 | 1,65 |
+| Taxa de inadimplência | 50,8% | 50,3% |
 
 Esses `assert` são o seu seguro na banca. Quando perguntarem sobre vazamento,
 você rola até a célula e mostra a verificação rodando.
+
+> **Atenção com dados reais em formato de painel.** A verificação 2 vale para
+> esta carteira, em que cada contribuinte tem uma linha só. Numa base real de
+> fotos mensais, o mesmo contribuinte aparece em várias competências — e é
+> legítimo que esteja no treino (meses antigos) e no teste (meses recentes).
+> Nesse formato, troque a verificação: confira que nenhuma **linha** se repete
+> e, principalmente, que nenhum atributo foi calculado com informação posterior
+> à competência da linha (um "total pago no ano", por exemplo, numa linha de
+> março).
 
 ### 3.6 E a validação?
 
@@ -254,21 +356,21 @@ O enunciado pede treino/teste/**validação**. Com eixo temporal, a validação 
 de dentro do treino, respeitando a ordem:
 
 ```python
-from sklearn.model_selection import TimeSeriesSplit
-
-# 4 dobras: cada uma treina no passado e valida no futuro imediato
+# 4 dobras: cada uma ajusta no passado e valida no futuro imediato
 validacao_temporal = TimeSeriesSplit(n_splits=4)
 ```
 
-Use isso na tunagem (seção 6) — **nunca** `KFold` ou `cross_val_score` com
-embaralhamento, que recriam o vazamento que você acabou de eliminar.
+É com essas dobras que você vai comparar modelos, tunar hiperparâmetros e
+escolher o limiar de decisão. **O conjunto de teste fica guardado até a
+seção 7** e é usado uma única vez.
 
-> **Ordene antes de usar `TimeSeriesSplit`.** Ele divide por posição na tabela,
-> não por data. Se as linhas não estiverem em ordem cronológica, as dobras
-> ficam embaralhadas e a proteção se perde:
-> ```python
-> treino = treino.sort_values("competencia").reset_index(drop=True)
-> ```
+Duas regras:
+
+- **Nunca** use `KFold` ou `cross_val_score` com embaralhamento: eles recriam o
+  vazamento que você acabou de eliminar.
+- O `TimeSeriesSplit` divide por **posição na tabela**, não por data. Ele só é
+  temporal porque ordenamos `universo` por competência na seção 3.3. Se você
+  reordenar ou embaralhar o DataFrame depois, a proteção se perde em silêncio.
 
 ---
 
@@ -277,7 +379,7 @@ embaralhamento, que recriam o vazamento que você acabou de eliminar.
 ### O erro que mais reprova
 
 ```python
-# ERRADO -- vazamento silencioso
+# ERRADO -- vazamento silencioso. Não copie.
 from sklearn.preprocessing import StandardScaler
 escalador = StandardScaler().fit(X)        # <-- viu treino E teste
 X_tr = escalador.transform(X_tr)
@@ -288,91 +390,99 @@ O `fit` calculou média e desvio usando **o conjunto de teste inteiro**.
 Informação do teste vazou para o treino, e a métrica final fica otimista. Não dá
 erro, não dá aviso — e é uma das primeiras coisas que a banca procura.
 
-### A forma correta: tudo dentro de um `Pipeline`
+### Atributos, alvo e o que fica de fora
 
 ```python
-from sklearn.compose import ColumnTransformer
-from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import OneHotEncoder, StandardScaler
-from sklearn.impute import SimpleImputer
-
 CATEGORICOS = ["tipo_imovel", "setor_urbano"]
 NUMERICOS = ["area_construida_m2", "valor_venal", "valor_iptu_anual",
              "distancia_centro_km", "exercicios_inadimplentes_5a",
              "tempo_inadimplencia_dias", "valor_divida_consolidada",
              "qtd_parcelamentos_anteriores", "parcelamento_rompido",
              "qtd_notificacoes"]
+ATRIBUTOS = CATEGORICOS + NUMERICOS
 
-preparo = ColumnTransformer([
-    ("cat", OneHotEncoder(handle_unknown="ignore"), CATEGORICOS),
-    ("num", Pipeline([
-        ("imputacao", SimpleImputer(strategy="median")),
-        ("escala", StandardScaler()),
-    ]), NUMERICOS),
-])
+ALVO = "inadimplente_proximo_exercicio"          # Modelo 1
 
-modelo = Pipeline([("preparo", preparo), ("classificador", ...)])
-modelo.fit(X_treino, y_treino)      # o fit acontece SÓ no treino
+X_treino, y_treino = treino[ATRIBUTOS], treino[ALVO]
+X_teste, y_teste = teste[ATRIBUTOS], teste[ALVO]
+
+# Três coisas que NÃO podem estar entre os atributos:
+PROIBIDOS = {"inadimplente_proximo_exercicio", "divida_recuperada_12m",   # os alvos
+             "faixa_renda_setor",                                        # grupo protegido
+             "iptu_social", "competencia", "id_contribuinte"}
+assert not (PROIBIDOS & set(ATRIBUTOS)), "coluna proibida entre os atributos!"
+```
+
+Por que cada uma fica de fora:
+
+- **Os alvos.** Alvo entre os preditores é o vazamento mais grosseiro: a métrica
+  vai para perto de 1,0 e o modelo não serve para nada.
+- **`faixa_renda_setor`.** É o grupo protegido. Usá-la como preditor é
+  discriminação direta por renda; ela fica guardada para a auditoria de fairness
+  da Sprint 5.
+- **`iptu_social`.** Dado sensível (LGPD, Art. 5º, II), usado só para excluir.
+- **`competencia` e `id_contribuinte`.** Servem para organizar o experimento,
+  não para prever.
+
+### A forma correta: tudo dentro de um `Pipeline`
+
+```python
+def montar_preparo():
+    """Pré-processamento. Uma instância nova a cada chamada, para cada modelo."""
+    return ColumnTransformer([
+        ("cat", OneHotEncoder(handle_unknown="ignore"), CATEGORICOS),
+        ("num", Pipeline([
+            ("imputacao", SimpleImputer(strategy="median")),
+            ("escala", StandardScaler()),
+        ]), NUMERICOS),
+    ])
+
+
+def montar_modelo(estimador):
+    """Pré-processamento + classificador num objeto só."""
+    return Pipeline([("preparo", montar_preparo()), ("classificador", estimador)])
 ```
 
 Por que isso resolve: o `Pipeline` só faz `fit` no que você passar para ele.
-Durante a validação cruzada, ele refaz o `fit` em cada dobra automaticamente.
-Você não consegue vazar por descuido.
+Durante a validação, ele refaz o `fit` em cada dobra automaticamente, usando só
+a parte de ajuste. Você não consegue vazar por descuido.
 
 **`handle_unknown="ignore"` não é opcional** com split temporal: pode aparecer
 no teste uma categoria que não existia no treino (um setor novo). Sem isso, o
 notebook quebra na hora da avaliação.
 
-### Duas colunas que NÃO entram como atributo
-
-```python
-# faixa_renda_setor -> só para auditoria de fairness (Sprint 5)
-# iptu_social       -> dado sensível, usado só para EXCLUIR
-```
-
-A primeira é o grupo protegido: usá-la como preditor é discriminação direta por
-renda. A segunda é dado sensível (LGPD, Art. 5º, II) e serve apenas para remover
-o contribuinte do universo:
-
-```python
-universo = dados[dados["iptu_social"] == 0].copy()
-print(f"excluídos pelo IPTU Social: {len(dados) - len(universo)}")
-```
-
 ---
 
-## Seção 5 — Baselines (E1)
+## Seção 5 — Baselines comparados na validação (E1)
 
 O enunciado pede explicitamente **Regressão Logística e Árvore de Decisão** como
 referência. Baseline não é formalidade: é o número que dá sentido ao resultado
-final. Um Random Forest com ROC-AUC 0,67 é bom ou ruim? Só o baseline responde.
+final. Um Random Forest com ROC-AUC 0,70 é bom ou ruim? Só o baseline responde.
+
+A comparação acontece **na validação**, não no teste:
 
 ```python
-from sklearn.dummy import DummyClassifier
-from sklearn.linear_model import LogisticRegression
-from sklearn.tree import DecisionTreeClassifier
-from sklearn.metrics import roc_auc_score, f1_score
+def comparar_na_validacao(candidatos, X, y):
+    """ROC-AUC e F1 médios nas dobras de validação temporal."""
+    linhas = []
+    for nome, estimador in candidatos.items():
+        notas = cross_validate(montar_modelo(estimador), X, y,
+                               cv=validacao_temporal, scoring=["roc_auc", "f1"])
+        # O scikit-learn chama de "test_" a nota da dobra de validação.
+        linhas.append({"modelo": nome,
+                       "roc_auc": notas["test_roc_auc"].mean(),
+                       "f1": notas["test_f1"].mean()})
+    return pd.DataFrame(linhas).round(4)
 
-candidatos = {
+
+baselines = {
     "trivial (maioria)": DummyClassifier(strategy="most_frequent"),
     "regressão logística": LogisticRegression(max_iter=1000, random_state=SEMENTE),
     "árvore de decisão": DecisionTreeClassifier(max_depth=5, random_state=SEMENTE),
 }
 
-resultados = []
-for nome, estimador in candidatos.items():
-    modelo = Pipeline([("preparo", preparo), ("classificador", estimador)])
-    modelo.fit(X_treino, y_treino)
-    previsto = modelo.predict(X_teste)
-    try:
-        prob = modelo.predict_proba(X_teste)[:, 1]
-        auc = roc_auc_score(y_teste, prob)
-    except (AttributeError, ValueError):
-        auc = float("nan")          # o classificador trivial não tem AUC útil
-    resultados.append({"modelo": nome, "f1": f1_score(y_teste, previsto, zero_division=0),
-                       "roc_auc": auc})
-
-pd.DataFrame(resultados).round(4)
+placar = comparar_na_validacao(baselines, X_treino, y_treino)
+print(placar)
 ```
 
 Inclua o **classificador trivial**. Se o seu modelo sofisticado não superar
@@ -381,110 +491,389 @@ melhor você descobrir antes da banca.
 
 ### Quando o classificador trivial parece ganhar
 
-Rodando essa comparação nesta base, o resultado foi:
+O placar desta base:
 
-| Modelo | F1 | ROC-AUC |
+| Modelo | ROC-AUC na validação | F1 na validação |
 |---|---|---|
-| trivial (maioria) | **0,6700** | 0,5000 |
-| regressão logística | 0,6502 | 0,6676 |
-| árvore de decisão | 0,6596 | 0,6455 |
-| Random Forest tunado | 0,6524 | 0,6596 |
+| trivial (maioria) | 0,5000 | 0,6718 |
+| regressão logística | 0,7119 | 0,6658 |
+| árvore de decisão | 0,6884 | 0,6506 |
 
-Leia de novo: **o classificador trivial teve o melhor F1 de todos**. Se você
-reportar só o F1, a conclusão é que nenhum modelo serviu — e ela estaria errada.
+Leia de novo: **o classificador trivial tem o melhor F1**. Se você reportar só
+o F1, a conclusão é que nenhum modelo serviu — e ela estaria errada.
 
-**Por que isso acontece.** O alvo está em 50,4% no conjunto de teste. Chutando
-sempre "1", o recall vira 1,0 e a precisão vira 0,504, o que dá
-F1 = 2 × 0,504 / (0,504 + 1) = **0,670** sem aprender absolutamente nada. Já o
-ROC-AUC do trivial é 0,500: ele não ordena os casos, porque atribui a mesma
-previsão a todos.
+**Por que isso acontece.** O alvo está perto de 50%. Chutando sempre "1", o
+recall vira 1,0 e a precisão vira a própria prevalência (p), o que dá
+F1 = 2p / (p + 1) ≈ 0,67 sem aprender absolutamente nada. Já o ROC-AUC do
+trivial é 0,500: ele não ordena os casos, porque atribui a mesma previsão a
+todos.
 
 **O que distingue os dois.** F1 depende do limiar escolhido; ROC-AUC não. Um
 modelo pode ordenar bem os casos (ROC-AUC alto) e ainda assim ter F1 ruim porque
-o corte em 0,5 está no lugar errado para a distribuição dos scores. Medindo o F1
-do Random Forest em vários limiares:
+o corte em 0,5 está no lugar errado. Para ver isso, precisamos das
+probabilidades que o modelo atribui aos registros de validação:
+
+```python
+def previsoes_de_validacao(modelo, X, y):
+    """Probabilidades previstas para as dobras de validação.
+
+    Cada registro é previsto por um modelo que não o viu no ajuste.
+    """
+    probabilidades, reais = [], []
+    for idx_ajuste, idx_validacao in validacao_temporal.split(X):
+        ajustado = clone(modelo).fit(X.iloc[idx_ajuste], y.iloc[idx_ajuste])
+        probabilidades.append(ajustado.predict_proba(X.iloc[idx_validacao])[:, 1])
+        reais.append(y.iloc[idx_validacao].to_numpy())
+    return np.concatenate(probabilidades), np.concatenate(reais)
+
+
+logistica = montar_modelo(LogisticRegression(max_iter=1000, random_state=SEMENTE))
+prob_val, y_val = previsoes_de_validacao(logistica, X_treino, y_treino)
+
+for limiar in (0.35, 0.40, 0.45, 0.50, 0.55):
+    previsto = prob_val >= limiar
+    print(f"limiar {limiar:.2f} | F1 {f1_score(y_val, previsto):.4f}"
+          f" | precisão {precision_score(y_val, previsto):.3f}"
+          f" | recall {recall_score(y_val, previsto):.3f}")
+```
+
+O F1 da regressão logística em vários limiares, na validação:
 
 | Limiar | F1 | Precisão | Recall |
 |---|---|---|---|
-| 0,35 | 0,6873 | 0,532 | 0,970 |
-| **0,40** | **0,6949** | 0,560 | 0,914 |
-| 0,45 | 0,6805 | 0,580 | 0,824 |
-| 0,50 | 0,6524 | 0,593 | 0,725 |
-| 0,55 | 0,5970 | 0,610 | 0,585 |
+| 0,35 | 0,6955 | 0,571 | 0,889 |
+| 0,40 | 0,6939 | 0,597 | 0,827 |
+| 0,45 | 0,6868 | 0,622 | 0,767 |
+| 0,50 | 0,6659 | 0,655 | 0,678 |
+| 0,55 | 0,6312 | 0,685 | 0,585 |
 
-Em 0,40 o F1 chega a **0,695** e supera o trivial com folga. O modelo sempre foi
-melhor — o limiar padrão é que escondia isso.
+Com o limiar em 0,37 o F1 chega a 0,6956 e supera o trivial
+(0,6719 nos mesmos registros). O modelo sempre foi melhor — o limiar
+padrão é que escondia isso.
 
 **Três conclusões para o notebook:**
 
 1. **Compare modelos por ROC-AUC**, que não depende de limiar. Use F1 para
    avaliar uma configuração de decisão específica.
-2. **O limiar é uma decisão de projeto**, não uma constante da biblioteca.
-   Escolha-o pelo custo do erro no seu problema (seção 7) e **documente a
-   escolha**.
+2. **O limiar é uma decisão de projeto**, não uma constante da biblioteca
+   (seção 7).
 3. **Reporte o trivial mesmo quando ele parece ganhar**, com a explicação acima.
    Mostrar que você entende por que o F1 dele é alto vale mais que esconder a
    linha.
 
 ---
 
-## Seção 6 — Modelo final e tunagem (E2)
-
-### Justifique a escolha com base na EDA
-
-O enunciado cobra *"justificativa das escolhas algorítmicas"*. Não escreva "usamos
-Random Forest porque é bom". Argumente a partir dos seus dados:
-
-> **Por que gradient boosting.** Os atributos misturam escalas muito diferentes
-> (reais, dias, contagens) com categóricas de baixa cardinalidade, e as relações
-> são não lineares — o efeito do tempo de inadimplência satura. Árvores
-> impulsionadas lidam com isso sem exigir normalização, toleram os outliers de
-> valor venal vistos na EDA e fornecem importância de atributos, que sustenta o
-> direito à explicação do Art. 20 da LGPD. A regressão logística foi testada
-> como baseline e perdeu desempenho nas interações; redes neurais foram
-> descartadas por opacidade desnecessária neste volume de dados.
+## Seção 6 — Modelo com tunagem e escolha do vencedor (E2)
 
 ### Tunagem com validação temporal
 
+O enunciado pede um modelo mais expressivo (cita Random Forest e XGBoost como
+exemplos) com tunagem de hiperparâmetros:
+
 ```python
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.model_selection import GridSearchCV
-
-modelo = Pipeline([
-    ("preparo", preparo),
-    ("classificador", RandomForestClassifier(random_state=SEMENTE, n_jobs=-1)),
-])
-
 grade = {
-    "classificador__n_estimators": [200, 400],
-    "classificador__max_depth": [6, 10, None],
-    "classificador__min_samples_leaf": [1, 5, 20],
+    "classificador__n_estimators": [200],
+    "classificador__max_depth": [6, 10],
+    "classificador__min_samples_leaf": [5, 20],
 }
 
 busca = GridSearchCV(
-    modelo, grade,
-    cv=TimeSeriesSplit(n_splits=4),     # <-- temporal, não KFold
+    montar_modelo(RandomForestClassifier(random_state=SEMENTE, n_jobs=-1)),
+    grade,
+    cv=validacao_temporal,          # <-- temporal, não KFold
     scoring="roc_auc",
-    n_jobs=-1, verbose=1,
+    n_jobs=-1,
 )
-busca.fit(X_treino, y_treino)           # <-- só o treino; o teste nem aparece
+busca.fit(X_treino, y_treino)       # <-- só o treino; o teste nem aparece
 
 print("melhores parâmetros:", busca.best_params_)
 print(f"ROC-AUC na validação: {busca.best_score_:.4f}")
-melhor = busca.best_estimator_
 ```
 
 Note o prefixo `classificador__`: dentro de um `Pipeline`, os parâmetros são
 endereçados pelo nome do passo com dois sublinhados.
 
-**O conjunto de teste não aparece em nenhum lugar desta seção.** Ele é usado uma
-única vez, na seção 7. Se você ajustar hiperparâmetros olhando o resultado do
-teste, ele deixa de ser teste e vira validação — e a métrica final perde valor.
+A grade acima é pequena de propósito: quatro combinações rodam em segundos.
+Amplie quando a trilha inteira estiver funcionando — mas com um cuidado
+prático: florestas sem limite de profundidade ficam enormes. Nesta base, 400
+árvores com `max_depth=None` e `min_samples_leaf=1` geram um arquivo de mais de
+190 MB, acima do limite de 100 MB do GitHub (seção 9).
 
-### O segundo modelo: scoring de recuperabilidade
+### O placar decide — não a sofisticação
 
-O E2 pede dois modelos. O segundo estima a probabilidade de recuperação e a
-converte nas faixas pedidas:
+Junte o resultado da tunagem ao placar dos baselines:
+
+```python
+placar_final = pd.concat([
+    placar[["modelo", "roc_auc"]],
+    pd.DataFrame([{"modelo": "random forest (tunado)",
+                   "roc_auc": round(busca.best_score_, 4)}]),
+], ignore_index=True).sort_values("roc_auc", ascending=False)
+print(placar_final)
+```
+
+| Modelo | ROC-AUC na validação |
+|---|---|
+| regressão logística | 0,7119 |
+| random forest (tunado) | 0,7064 |
+| árvore de decisão | 0,6884 |
+| trivial (maioria) | 0,5000 |
+
+**A regressão logística vence o Random Forest tunado.** A diferença é pequena
+(0,005 de ROC-AUC) — menor que a oscilação por sorteio medida na seção 3.3,
+portanto um empate técnico. Por isso a regra de decisão precisa ser fixada
+antes de olhar o resultado, e a nossa é: *vence o maior ROC-AUC na validação; em empate
+técnico, vence o modelo mais simples*. Pelas duas cláusulas, o escolhido é a
+regressão logística.
+
+```python
+# Substitua pelo vencedor do SEU placar.
+vencedor = montar_modelo(LogisticRegression(max_iter=1000, random_state=SEMENTE))
+```
+
+Isso não é um fracasso do trabalho — é um resultado. Escreva-o assim:
+
+> **Justificativa da escolha.** Comparamos quatro candidatos na validação
+> temporal. O Random Forest, tunado em quatro combinações de profundidade e
+> tamanho mínimo de folha, atingiu ROC-AUC de 0,706; a regressão logística,
+> 0,712. Escolhemos a regressão logística: tem o melhor desempenho de
+> validação, é o modelo mais simples e seus coeficientes são diretamente
+> interpretáveis, o que sustenta o direito à explicação do Art. 20 da LGPD. O
+> resultado é coerente com a natureza dos dados: a carteira sintética foi
+> gerada por um processo aproximadamente linear no logito, que é exatamente a
+> forma funcional da regressão logística — não há interações para um modelo de
+> árvores explorar. Com dados reais essa vantagem pode desaparecer, e a
+> comparação deve ser refeita.
+
+O enunciado cobra *"justificativa das escolhas algorítmicas"*. Uma justificativa
+é isto: candidatos, critério, números e a razão do resultado. "Usamos Random
+Forest porque é robusto" não é justificativa — e, nesta base, nem seria a
+escolha certa.
+
+---
+
+## Seção 7 — Limiar, avaliação final e métricas por subgrupo
+
+### Escolha o limiar na validação, pelo custo do erro
+
+O limiar de 0,5 é só o padrão da biblioteca. Faça a sua escolha — e faça **na
+validação**, porque escolher o limiar olhando o teste é ajustar o modelo ao
+gabarito:
+
+```python
+prob_val, y_val = previsoes_de_validacao(vencedor, X_treino, y_treino)
+
+limiares = np.arange(0.30, 0.71, 0.01)
+f1_por_limiar = [f1_score(y_val, prob_val >= limiar) for limiar in limiares]
+LIMIAR = round(float(limiares[int(np.argmax(f1_por_limiar))]), 2)
+
+print(f"limiar que maximiza F1 na validação: {LIMIAR:.2f}")
+for limiar in (0.50, LIMIAR):
+    previsto = prob_val >= limiar
+    print(f"  limiar {limiar:.2f}: recall {recall_score(y_val, previsto):.3f}"
+          f" | precisão {precision_score(y_val, previsto):.3f}"
+          f" | acertos {int((previsto & (y_val == 1)).sum())}"
+          f" | alarmes falsos {int((previsto & (y_val == 0)).sum())}")
+```
+
+Mas atenção: **maximizar F1 não é automaticamente o certo**. O F1 trata falso
+positivo e falso negativo como igualmente ruins, e no seu problema eles podem
+não ser. Diga o que cada erro custa e mostre a troca em casos:
+
+> **Nossa escolha de limiar.** Um falso negativo é um contribuinte que ficará
+> inadimplente sem que a Sefin o antecipe; um falso positivo é um contribuinte
+> em dia sinalizado indevidamente. Como este modelo tem uso diagnóstico —
+> dimensionar a inadimplência esperada e orientar ações de educação fiscal, não
+> cobrança —, o alarme falso custa pouco, e privilegiamos o recall. Com o limiar
+> em 0,37, escolhido na validação, o recall sobe de 0,678 para
+> 0,869: 1.152 inadimplentes a mais identificados
+> (4.079 → 5.231), ao preço de 1.638 alarmes falsos
+> adicionais (2.152 → 3.790). Se o modelo fosse usado para
+> direcionar cobrança, esse custo seria inaceitável e a escolha seria outra.
+
+> **Reporte a troca em casos, dos dois lados.** "O recall subiu 0,19" não
+> significa nada para a Sefin; "1.152 inadimplentes a mais, com 1.638 alarmes
+> falsos a mais" significa. E nunca cite só o ganho: o custo é metade da
+> decisão.
+
+### A avaliação final: o teste, uma única vez
+
+Agora — e só agora — o conjunto de teste entra:
+
+```python
+def avaliar(y_real, probabilidades, limiar):
+    """Métricas exigidas pelo enunciado, para um limiar de decisão."""
+    previsto = (probabilidades >= limiar).astype(int)
+    return {
+        "acuracia": accuracy_score(y_real, previsto),
+        "precisao": precision_score(y_real, previsto, zero_division=0),
+        "recall": recall_score(y_real, previsto, zero_division=0),
+        "f1": f1_score(y_real, previsto, zero_division=0),
+        "roc_auc": roc_auc_score(y_real, probabilidades),
+        "matriz_confusao": confusion_matrix(y_real, previsto).tolist(),
+    }
+
+
+modelo_inadimplencia = vencedor.fit(X_treino, y_treino)     # ajuste final: todo o treino
+prob_teste = modelo_inadimplencia.predict_proba(X_teste)[:, 1]
+
+metricas_inadimplencia = avaliar(y_teste, prob_teste, LIMIAR)
+for nome, valor in metricas_inadimplencia.items():
+    print(f"{nome:16s} {valor if isinstance(valor, list) else round(valor, 4)}")
+```
+
+Resultado no teste:
+
+| Métrica | Valor |
+|---|---|
+| Acurácia | 0,620 |
+| Precisão | 0,585 |
+| Recall | 0,843 |
+| F1 | 0,691 |
+| ROC-AUC | 0,707 |
+
+Matriz de confusão `[[VN, FP], [FN, VP]]` = `[[731, 1121], [295, 1583]]`
+
+Se o resultado do teste decepcionar, **não volte para ajustar nada**. No momento
+em que você altera o modelo por causa do teste, ele deixa de ser teste. Reporte
+o número que saiu.
+
+### Interprete, não só reporte
+
+A rubrica diz *"métricas completas e interpretadas"*. Uma tabela de números sem
+leitura não cumpre o critério. Para cada métrica, diga o que ela significa **no
+problema**:
+
+> A matriz de confusão mostra 295 falsos negativos: contribuintes que ficarão
+> inadimplentes e que o modelo não antecipa. Os 1.121 falsos positivos são
+> contribuintes em dia sinalizados indevidamente — aceitável num uso
+> diagnóstico, inaceitável se a saída acionasse cobrança. O ROC-AUC de 0,707
+> no teste ficou próximo do obtido na validação (0,712), o que indica que a
+> estimativa de validação era confiável.
+
+E seja honesto com números modestos:
+
+> ROC-AUC de 0,707 indica desempenho moderado: o modelo é claramente melhor que
+> o acaso e erra com frequência. Isso é esperado, já que o processo gerador
+> embute ruído deliberado. Valores próximos de 1,0 aqui indicariam vazamento,
+> não qualidade.
+
+### Métricas por subgrupo — guarde isto para a Sprint 5
+
+O enunciado é explícito: *"Guardem as métricas POR SUBGRUPO (faixa de renda,
+região): a Sprint 5 fará a análise de fairness sobre elas."*
+
+```python
+def metricas_por_grupo(avaliacao, coluna):
+    """Prevalência, taxa de seleção, recall e precisão por grupo."""
+    linhas = []
+    for grupo, bloco in avaliacao.groupby(coluna):
+        real, previsto = bloco["y_real"].to_numpy(), bloco["y_pred"].to_numpy()
+        positivos = real == 1
+        linhas.append({
+            "grupo": grupo, "n": len(bloco),
+            "prevalencia": real.mean(),
+            "taxa_selecao": previsto.mean(),
+            "recall": previsto[positivos].mean() if positivos.any() else np.nan,
+            "precisao": real[previsto == 1].mean() if (previsto == 1).any() else np.nan,
+        })
+    return pd.DataFrame(linhas).round(4)
+
+
+avaliacao_inadimplencia = pd.DataFrame({
+    "id_contribuinte": teste["id_contribuinte"].to_numpy(),
+    "faixa_renda_setor": teste["faixa_renda_setor"].to_numpy(),     # grupo protegido
+    "setor_urbano": teste["setor_urbano"].to_numpy(),
+    "y_real": y_teste.to_numpy(),
+    "y_prob": prob_teste,
+    "y_pred": (prob_teste >= LIMIAR).astype(int),
+})
+
+por_renda = metricas_por_grupo(avaliacao_inadimplencia, "faixa_renda_setor")
+print(por_renda)
+
+# A Sprint 5 vai consumir estes arquivos.
+avaliacao_inadimplencia.to_csv(DADOS / "avaliacao_teste_inadimplencia.csv", sep=";", index=False)
+por_renda.to_csv(DADOS / "metricas_por_subgrupo_inadimplencia.csv", sep=";", index=False)
+```
+
+| Faixa de renda do setor | n | Prevalência real | Taxa de seleção | Recall | Precisão |
+|---|---|---|---|---|---|
+| alta | 812 | 39,7% | 41,8% | 0,543 | 0,516 |
+| media | 1.346 | 45,5% | 71,5% | 0,856 | 0,545 |
+| baixa | 1.572 | 60,0% | 89,2% | 0,936 | 0,630 |
+
+Olhe a coluna `taxa_selecao`: o modelo sinaliza 89% dos contribuintes
+de setores de renda baixa e 42% dos de renda alta — mesmo sem a faixa de
+renda entre os atributos. Nesta sprint você **mede e guarda**; a análise e a
+mitigação são assunto da Sprint 5. Mas registre desde já: é por causa desse
+número que o Modelo 1 fica restrito a uso diagnóstico.
+
+Salvar o conjunto de teste com as predições é o que permite auditar fairness
+depois **sem retreinar nada**. Equipe que não salva isso retrabalha.
+
+---
+
+## Seção 8 — O segundo modelo: scoring de recuperabilidade
+
+O Modelo 2 responde a outra pergunta, sobre outro universo: entre os que **já
+têm dívida inscrita**, qual a probabilidade de recuperação em 12 meses? A
+receita é a mesma, e as funções já estão prontas:
+
+```python
+ALVO_REC = "divida_recuperada_12m"
+
+# Mesmo corte temporal, universo restrito a quem tem dívida.
+treino_rec = treino[treino["valor_divida_consolidada"] > 0]
+teste_rec = teste[teste["valor_divida_consolidada"] > 0]
+
+Xr_treino, yr_treino = treino_rec[ATRIBUTOS], treino_rec[ALVO_REC]
+Xr_teste, yr_teste = teste_rec[ATRIBUTOS], teste_rec[ALVO_REC]
+print(f"treino: {len(treino_rec)} | teste: {len(teste_rec)}")
+
+# Baselines e tunagem, tudo na validação.
+placar_rec = comparar_na_validacao(baselines, Xr_treino, yr_treino)
+
+busca_rec = GridSearchCV(
+    montar_modelo(RandomForestClassifier(random_state=SEMENTE, n_jobs=-1)),
+    grade, cv=validacao_temporal, scoring="roc_auc", n_jobs=-1,
+).fit(Xr_treino, yr_treino)
+
+placar_rec_final = pd.concat([
+    placar_rec[["modelo", "roc_auc"]],
+    pd.DataFrame([{"modelo": "random forest (tunado)",
+                   "roc_auc": round(busca_rec.best_score_, 4)}]),
+], ignore_index=True).sort_values("roc_auc", ascending=False)
+print(placar_rec_final)
+```
+
+| Modelo | ROC-AUC na validação |
+|---|---|
+| regressão logística | 0,6717 |
+| random forest (tunado) | 0,6595 |
+| árvore de decisão | 0,6404 |
+| trivial (maioria) | 0,5000 |
+
+De novo a regressão logística vence, pelo mesmo motivo. Ajuste final e
+avaliação no teste, uma única vez:
+
+```python
+# Substitua pelo vencedor do SEU placar.
+modelo_recuperabilidade = montar_modelo(
+    LogisticRegression(max_iter=1000, random_state=SEMENTE)).fit(Xr_treino, yr_treino)
+
+prob_rec = modelo_recuperabilidade.predict_proba(Xr_teste)[:, 1]
+metricas_recuperabilidade = avaliar(yr_teste, prob_rec, 0.5)
+print(f"ROC-AUC no teste: {metricas_recuperabilidade['roc_auc']:.4f}")
+```
+
+O ROC-AUC no teste é 0,684.
+
+### Um score não tem limiar: tem faixas e ordenação
+
+O Modelo 1 termina numa decisão binária, e por isso o limiar importava. O
+Modelo 2 é um **scoring**: o que o MVP (E4) usa é a probabilidade em si, para
+ordenar a fila. O enunciado pede as faixas alta/média/baixa:
 
 ```python
 def faixa_recuperabilidade(probabilidade):
@@ -495,162 +884,78 @@ def faixa_recuperabilidade(probabilidade):
         return "media"
     return "baixa"
 
-teste = teste.copy()
-teste["prob_recuperacao"] = melhor.predict_proba(X_teste)[:, 1]
-teste["faixa"] = teste["prob_recuperacao"].map(faixa_recuperabilidade)
 
-# O que o MVP (E4) vai ordenar: retorno esperado
-teste["retorno_esperado"] = (teste["valor_divida_consolidada"]
-                             * teste["prob_recuperacao"]).round(2)
+fila = teste_rec[["id_contribuinte", "setor_urbano", "faixa_renda_setor",
+                  "valor_divida_consolidada"]].copy()
+fila["y_real"] = yr_teste.to_numpy()
+fila["prob_recuperacao"] = prob_rec
+fila["faixa"] = fila["prob_recuperacao"].map(faixa_recuperabilidade)
 
-print(teste["faixa"].value_counts())
+# O que o MVP vai ordenar: retorno esperado = valor da dívida x probabilidade
+fila["retorno_esperado"] = (fila["valor_divida_consolidada"] * fila["prob_recuperacao"]).round(2)
+fila = fila.sort_values("retorno_esperado", ascending=False).reset_index(drop=True)
 ```
+
+### Confira se as faixas dizem a verdade
+
+Como o retorno esperado multiplica o valor pela probabilidade, não basta o
+modelo **ordenar** bem: a probabilidade precisa ser um número confiável. A
+verificação é simples — em cada faixa, a taxa de recuperação observada deve
+acompanhar a probabilidade média prevista:
+
+```python
+calibracao = (fila.groupby("faixa")
+              .agg(casos=("y_real", "size"),
+                   prob_media_prevista=("prob_recuperacao", "mean"),
+                   taxa_observada=("y_real", "mean"))
+              .reindex(["alta", "media", "baixa"]).round(3))
+print(calibracao)
+
+# Guarde para o MVP (E4) e para a auditoria da Sprint 5.
+fila.to_csv(DADOS / "avaliacao_teste_recuperabilidade.csv", sep=";", index=False)
+```
+
+| Faixa | Casos | Probabilidade média prevista | Taxa de recuperação observada |
+|---|---|---|---|
+| alta | 541 | 70,9% | 73,0% |
+| media | 2.081 | 52,2% | 54,6% |
+| baixa | 450 | 21,9% | 22,7% |
+
+Leia a tabela assim: na faixa alta o modelo previu em média 71% e
+73% das dívidas foram de fato recuperadas; na baixa, previu
+22% e observou 23%. As faixas estão na ordem certa e
+os números previstos acompanham os observados — é isso que autoriza usar a
+probabilidade no cálculo do retorno esperado. Se a faixa "alta" mostrasse taxa
+observada parecida com a "média", o score não estaria separando nada, por
+melhor que fosse o ROC-AUC.
+
+Note também o tamanho das faixas: 68% das dívidas caem na faixa média.
+O score separa bem os extremos e é honesto sobre o meio — não force faixas mais
+"decididas" do que os dados permitem.
 
 ---
 
-## Seção 7 — Avaliação e métricas por subgrupo
+## Seção 9 — Serialização e versionamento (E3)
 
-### Métricas completas
-
-O enunciado exige acurácia, precisão, recall, F1 **e** matriz de confusão:
+### `joblib`, e o pipeline inteiro
 
 ```python
-from sklearn.metrics import (accuracy_score, classification_report,
-                             confusion_matrix, precision_score, recall_score,
-                             f1_score, roc_auc_score)
+joblib.dump(modelo_inadimplencia, MODELOS / "modelo_inadimplencia.joblib", compress=3)
+joblib.dump(modelo_recuperabilidade, MODELOS / "modelo_recuperabilidade.joblib", compress=3)
 
-prob = melhor.predict_proba(X_teste)[:, 1]
-previsto = (prob >= 0.5).astype(int)
-
-metricas = {
-    "acuracia": accuracy_score(y_teste, previsto),
-    "precisao": precision_score(y_teste, previsto, zero_division=0),
-    "recall": recall_score(y_teste, previsto, zero_division=0),
-    "f1": f1_score(y_teste, previsto, zero_division=0),
-    "roc_auc": roc_auc_score(y_teste, prob),
-}
-print({k: round(v, 4) for k, v in metricas.items()})
-print(confusion_matrix(y_teste, previsto))
-print(classification_report(y_teste, previsto, zero_division=0))
-```
-
-### Interprete, não só reporte
-
-A rubrica diz *"métricas completas e interpretadas"*. Uma tabela de números sem
-leitura não cumpre o critério. Para cada métrica, diga o que ela significa **no
-problema**:
-
-> A matriz de confusão mostra 598 falsos negativos: 598 dívidas recuperáveis que
-> o modelo deixaria de priorizar — dinheiro abandonado na fila. Os 863 falsos
-> positivos custam diligências sem retorno. Como o custo de uma diligência
-> perdida é muito menor que o de abandonar crédito recuperável, mantivemos o
-> limiar em 0,5, que privilegia recall (0,698) sobre precisão (0,616).
-
-E seja honesto com números modestos:
-
-> ROC-AUC de 0,67 indica desempenho moderado: o modelo é claramente melhor que o
-> acaso e erra com frequência. Isso é esperado, já que o processo gerador embute
-> ruído deliberado. Valores próximos de 1,0 aqui indicariam vazamento, não
-> qualidade.
-
-### Escolha o limiar pelo custo do erro
-
-Como vimos na seção 5, o limiar de 0,5 é só o padrão da biblioteca — não é uma
-escolha fundamentada. Faça a sua, e registre o raciocínio:
-
-```python
-from sklearn.metrics import precision_recall_curve
-
-precisoes, recalls, limiares = precision_recall_curve(y_teste, prob)
-f1_por_limiar = 2 * precisoes * recalls / (precisoes + recalls + 1e-12)
-melhor = int(np.nanargmax(f1_por_limiar))
-
-print(f"limiar que maximiza F1: {limiares[melhor]:.3f} (F1 = {f1_por_limiar[melhor]:.4f})")
-```
-
-Mas atenção: **maximizar F1 não é automaticamente o certo**. O F1 trata falso
-positivo e falso negativo como igualmente ruins, e no seu problema eles não são:
-
-> **Nossa escolha de limiar.** Um falso positivo custa uma diligência sem
-> retorno; um falso negativo abandona crédito recuperável. Como o segundo custa
-> mais à Prefeitura, adotamos o limiar 0,40, que eleva o recall de 0,725 para
-> 0,914 ao custo de reduzir a precisão de 0,593 para 0,560. Em números
-> absolutos, as dívidas recuperáveis identificadas sobem de 1.126 para 1.421 —
-> **295 casos a mais na fila** —, ao preço de diligências adicionais sem êxito.
-
-> **Reporte o ganho em casos, não só em pontos de métrica.** "Recall subiu 0,19"
-> não significa nada para a Sefin; "295 dívidas recuperáveis que entrariam na
-> fila" significa. A conversão de métrica em efeito é o que a rubrica chama de
-> interpretar.
-
-Esse parágrafo — com os números concretos da troca — é o tipo de interpretação
-que a rubrica do E2 está cobrando.
-
-### Métricas por subgrupo — guarde isto para a Sprint 5
-
-O enunciado é explícito: *"Guardem as métricas POR SUBGRUPO (faixa de renda,
-região): a Sprint 5 fará a análise de fairness sobre elas."*
-
-```python
-avaliacao = X_teste.copy()
-avaliacao["y_real"] = y_teste.to_numpy()
-avaliacao["y_prob"] = prob
-avaliacao["y_pred"] = previsto
-avaliacao["faixa_renda_setor"] = teste["faixa_renda_setor"].to_numpy()   # grupo protegido
-
-def metricas_por_grupo(df, coluna):
-    linhas = []
-    for grupo, bloco in df.groupby(coluna):
-        real, pred = bloco["y_real"].to_numpy(), bloco["y_pred"].to_numpy()
-        positivos = real == 1
-        linhas.append({
-            "grupo": grupo, "n": len(bloco),
-            "prevalencia": real.mean(),
-            "taxa_selecao": pred.mean(),
-            "recall": pred[positivos].mean() if positivos.any() else np.nan,
-            "precisao": real[pred == 1].mean() if (pred == 1).any() else np.nan,
-        })
-    return pd.DataFrame(linhas).round(4)
-
-por_renda = metricas_por_grupo(avaliacao, "faixa_renda_setor")
-print(por_renda)
-
-# Salve: a Sprint 5 vai consumir este arquivo
-avaliacao.to_csv("../data/avaliacao_teste.csv", sep=";", index=False)
-por_renda.to_csv("../data/metricas_por_subgrupo.csv", sep=";", index=False)
-```
-
-Salvar o conjunto de teste com as predições é o que permite auditar fairness na
-Sprint 5 **sem retreinar nada**. Equipe que não salva isso retrabalha depois.
-
----
-
-## Seção 8 — Serialização e versionamento (E3)
-
-### `joblib`, não `pickle`
-
-```python
-import joblib
-from pathlib import Path
-
-MODELOS = Path("../models")
-MODELOS.mkdir(exist_ok=True)
-
-joblib.dump(melhor, MODELOS / "modelo_recuperabilidade.joblib")
+for arquivo in sorted(MODELOS.glob("modelo_*.joblib")):
+    print(f"{arquivo.name}: {arquivo.stat().st_size / 1024:.0f} KB")
 ```
 
 O `joblib` é mais eficiente que o `pickle` para objetos com arrays NumPy, que é
-exatamente o caso de modelos scikit-learn. O enunciado aceita `.pkl` ou
-`.joblib`; use `.joblib`.
+o caso de modelos scikit-learn. O enunciado aceita `.pkl` ou `.joblib`; use
+`.joblib`. O `compress=3` reduz bastante o arquivo sem custo perceptível.
 
-### Salve o pipeline inteiro, nunca só o classificador
+**Salve o pipeline inteiro, nunca só o classificador:**
 
 ```python
-# ERRADO -- joga fora o pré-processamento
-joblib.dump(melhor.named_steps["classificador"], "modelo.joblib")
-
-# CORRETO -- o objeto completo
-joblib.dump(melhor, "modelo.joblib")
+# ERRADO -- joga fora o pré-processamento. Não copie.
+joblib.dump(modelo_inadimplencia.named_steps["classificador"], "modelo.joblib")
 ```
 
 Salvando só o classificador, quem carregar o modelo recebe um objeto que espera
@@ -663,73 +968,95 @@ Um `.joblib` sozinho não diz quando foi treinado, com qual versão do scikit-le
 nem o que esperava receber. Em seis meses, isso importa:
 
 ```python
-import json
-from datetime import datetime
+def metadados_do_modelo(nome, modelo, alvo, n_treino, n_teste, metricas, extras=None):
+    registro = {
+        "nome": nome,
+        "versao": "1.0.0",
+        "treinado_em": datetime.now().isoformat(timespec="seconds"),
+        "algoritmo": type(modelo.named_steps["classificador"]).__name__,
+        "alvo": alvo,
+        "sklearn": sklearn.__version__,
+        "python": platform.python_version(),
+        "semente": SEMENTE,
+        "split": {"tipo": "temporal", "corte_teste": str(CORTE_TESTE.date()),
+                  "n_treino": int(n_treino), "n_teste": int(n_teste)},
+        "atributos": {"categoricos": CATEGORICOS, "numericos": NUMERICOS},
+        "fora_dos_atributos": sorted(PROIBIDOS),
+        "metricas_teste": {k: (v if isinstance(v, list) else round(float(v), 4))
+                           for k, v in metricas.items()},
+        "dados": "carteira sintética calibrada — não representa a realidade fiscal",
+    }
+    registro.update(extras or {})
+    return registro
 
-metadados = {
-    "nome": "modelo_recuperabilidade",
-    "versao": "1.0.0",
-    "treinado_em": datetime.now().isoformat(timespec="seconds"),
-    "algoritmo": type(melhor.named_steps["classificador"]).__name__,
-    "hiperparametros": busca.best_params_,
-    "sklearn": sklearn.__version__,
-    "python": platform.python_version(),
-    "semente": SEMENTE,
-    "split": {
-        "tipo": "temporal",
-        "corte": str(CORTE.date()),
-        "n_treino": int(len(treino)),
-        "n_teste": int(len(teste)),
-    },
-    "atributos": {"categoricos": CATEGORICOS, "numericos": NUMERICOS},
-    "excluidos_do_treino": ["faixa_renda_setor (grupo protegido)",
-                            "iptu_social (dado sensível, usado para excluir)"],
-    "metricas_teste": {k: round(v, 4) for k, v in metricas.items()},
-    "dados": "carteira sintética calibrada — não representa a realidade fiscal",
+
+registros = {
+    "modelo_inadimplencia": metadados_do_modelo(
+        "modelo_inadimplencia", modelo_inadimplencia, ALVO,
+        len(treino), len(teste), metricas_inadimplencia,
+        extras={"limiar_decisao": LIMIAR, "uso": "diagnóstico — não direciona cobrança"}),
+    "modelo_recuperabilidade": metadados_do_modelo(
+        "modelo_recuperabilidade", modelo_recuperabilidade, ALVO_REC,
+        len(treino_rec), len(teste_rec), metricas_recuperabilidade,
+        extras={"faixas": {"alta": ">= 0.66", "media": "0.33 a 0.66", "baixa": "< 0.33"},
+                "uso": "ordenação da fila por retorno esperado"}),
 }
 
-with open(MODELOS / "modelo_recuperabilidade.json", "w", encoding="utf-8") as f:
-    json.dump(metadados, f, ensure_ascii=False, indent=2)
+for nome, registro in registros.items():
+    with open(MODELOS / f"{nome}.json", "w", encoding="utf-8") as arquivo:
+        json.dump(registro, arquivo, ensure_ascii=False, indent=2)
 ```
+
+O limiar de decisão vai nos metadados porque **faz parte do modelo**: quem
+carregar o `.joblib` e usar 0,5 por hábito estará usando outro classificador.
 
 ### Teste que o modelo salvo funciona
 
-Esta célula é curta e evita a pior falha possível: entregar um arquivo corrompido.
+Esta célula é curta e evita a pior falha possível: entregar um arquivo que não
+é o modelo.
 
 ```python
-recarregado = joblib.load(MODELOS / "modelo_recuperabilidade.joblib")
+pares = [("modelo_inadimplencia", modelo_inadimplencia, X_teste),
+         ("modelo_recuperabilidade", modelo_recuperabilidade, Xr_teste)]
 
-prob_original = melhor.predict_proba(X_teste.head(100))[:, 1]
-prob_recarregada = recarregado.predict_proba(X_teste.head(100))[:, 1]
-
-assert np.allclose(prob_original, prob_recarregada), "o modelo salvo divergiu!"
-print("modelo recarregado e verificado: predições idênticas")
+for nome, original, X_amostra in pares:
+    recarregado = joblib.load(MODELOS / f"{nome}.joblib")
+    assert isinstance(recarregado, Pipeline), f"{nome}: o arquivo não contém um pipeline!"
+    assert np.allclose(original.predict_proba(X_amostra.head(100))[:, 1],
+                       recarregado.predict_proba(X_amostra.head(100))[:, 1]), f"{nome} divergiu!"
+    print(f"{nome}: recarregado e verificado")
 ```
+
+> **Só carregue arquivos `.joblib` e `.pkl` em que você confia.** Esses formatos
+> executam código ao serem abertos. Um modelo baixado de fonte desconhecida pode
+> rodar qualquer coisa na sua máquina. Carregue apenas o que a sua equipe gerou.
 
 ### Versionando em `/models`
 
-Arquivos `.joblib` são binários — o Git não consegue mostrar diferenças entre
-versões, e cada commit guarda uma cópia inteira. Com modelos pequenos (os deste
-PoC têm ~170 KB) isso é aceitável. Então:
+Arquivos `.joblib` são binários — o Git não mostra diferenças entre versões, e
+cada commit guarda uma cópia inteira. Com modelos pequenos isso é aceitável: os
+dois desta trilha somam 5 KB. Então:
 
 ```bash
+git add models/modelo_inadimplencia.joblib models/modelo_inadimplencia.json
 git add models/modelo_recuperabilidade.joblib models/modelo_recuperabilidade.json
-git commit -m "feat: modelo de recuperabilidade treinado com split temporal
-
-ROC-AUC 0,67 no conjunto de teste (competências a partir de 2026-04).
-Metadados e métricas por subgrupo em models/."
+git commit -m "feat: modelos da Sprint 4 treinados com split temporal"
 ```
 
 Confira que o `.gitignore` do projeto não está excluindo a pasta: o PoC ignora
-`models/*.joblib` por padrão, e para o E3 você **precisa** versionar. Adicione
-uma exceção:
+`models/*.joblib` e `models/*.json` por padrão, e para o E3 você **precisa**
+versionar. Adicione exceções:
 
 ```gitignore
+!models/modelo_inadimplencia.joblib
+!models/modelo_inadimplencia.json
 !models/modelo_recuperabilidade.joblib
 !models/modelo_recuperabilidade.json
 ```
 
-Se o modelo passar de ~50 MB, use Git LFS em vez de commitar direto.
+Fique de olho no tamanho se trocar de algoritmo: o GitHub recusa arquivos acima
+de 100 MB, e uma floresta sem limite de profundidade chega lá com facilidade.
+Acima de ~50 MB, reduza o modelo ou use Git LFS.
 
 ---
 
@@ -744,56 +1071,60 @@ Se o modelo passar de ~50 MB, use Git LFS em vez de commitar direto.
 
 **Metodologia (E1)**
 
+- [ ] O grupo protegido foi excluído **antes** do split
 - [ ] O split é temporal, com o corte explícito
-- [ ] Os três `assert` de vazamento estão no notebook e passam
+- [ ] As verificações de vazamento (`assert`) estão no notebook e passam
 - [ ] O eixo temporal é independente dos atributos preditivos
-- [ ] A tunagem usa `TimeSeriesSplit`, não `KFold`
+- [ ] Comparação, tunagem e limiar usam a validação temporal, não o teste
 - [ ] Todo pré-processamento está dentro do `Pipeline`
-- [ ] Os baselines (trivial, logística, árvore) estão treinados e comparados
+- [ ] Os baselines (trivial, logística, árvore) estão no placar
 
 **Modelos e métricas (E2)**
 
-- [ ] A escolha algorítmica está justificada a partir da EDA
+- [ ] Os **dois** modelos estão treinados: inadimplência e recuperabilidade
+- [ ] Há um modelo com tunagem de hiperparâmetros no placar
+- [ ] A escolha do vencedor segue uma regra declarada e está justificada
 - [ ] Acurácia, precisão, recall, F1, ROC-AUC e matriz de confusão reportadas
 - [ ] As métricas estão **interpretadas** no contexto do problema
-- [ ] O conjunto de teste foi usado **uma única vez**
-- [ ] O scoring de recuperabilidade produz as faixas alta/média/baixa
+- [ ] O limiar foi escolhido na validação, com a troca descrita em casos
+- [ ] O conjunto de teste foi usado **uma única vez** por modelo
+- [ ] O scoring produz as faixas alta/média/baixa, e a tabela de calibração confirma a ordem
 - [ ] As métricas por subgrupo estão calculadas e salvas
 
 **Artefatos (E3)**
 
-- [ ] O pipeline completo está serializado em `/models`
-- [ ] Os metadados em JSON acompanham o modelo
+- [ ] Os dois pipelines completos estão serializados em `/models`
+- [ ] Os metadados em JSON acompanham cada modelo (com o limiar de decisão)
 - [ ] O teste de recarga passa
 - [ ] Os arquivos estão versionados no Git (confira o `.gitignore`)
 
 **Ética**
 
 - [ ] A natureza sintética dos dados está declarada na primeira célula
-- [ ] Os beneficiários do IPTU Social foram excluídos antes do treino
 - [ ] A faixa de renda não é atributo preditivo
+- [ ] As limitações do experimento estão escritas (eixo temporal sorteado, dados sintéticos)
 
 ---
 
-## Os sete erros que a banca vai procurar
+## Os oito erros que a banca vai procurar
 
 | Erro | Como aparece | Como evitar |
 |---|---|---|
 | 1. Split aleatório | `train_test_split(...)` sem eixo temporal | Corte por competência |
 | 2. `fit` fora do pipeline | `StandardScaler().fit(X)` antes do split | Tudo dentro do `Pipeline` |
-| 3. Validação embaralhada | `KFold` ou `cross_val_score` padrão na tunagem | `TimeSeriesSplit` |
-| 4. Teste usado várias vezes | Hiperparâmetros ajustados olhando o teste | Validação sai do treino |
-| 5. Alvo entre os preditores | `divida_recuperada_12m` na lista de atributos | Revise `X.columns` |
-| 6. Só o classificador salvo | `dump(pipeline.named_steps[...])` | Salve o pipeline inteiro |
-| 7. Métrica sem leitura | Tabela de números sem parágrafo de interpretação | Um parágrafo por métrica |
+| 3. Validação embaralhada | `KFold` ou `cross_val_score` padrão na tunagem | `TimeSeriesSplit` sobre dados ordenados |
+| 4. Teste usado várias vezes | Baselines, hiperparâmetros ou limiar decididos no teste | Tudo na validação; teste só no fim |
+| 5. Coluna proibida nos atributos | Alvo, grupo protegido ou identificador em `X` | O `assert` da seção 4 |
+| 6. Grupo protegido no treino | Exclusão feita depois do split, ou numa variável que ninguém usa | Excluir logo após a carga e seguir a partir de `universo` |
+| 7. Arquivo que não é o modelo | Só o classificador salvo, ou uma variável sobrescrita | Salvar o pipeline e rodar o teste de recarga |
+| 8. Métrica sem leitura | Tabela de números sem parágrafo de interpretação | Um parágrafo por resultado, com a troca em casos |
 
-O erro 5 merece um teste explícito, porque é silencioso e infla a métrica para
-perto de 1,0:
-
-```python
-ALVOS = {"divida_recuperada_12m", "inadimplente_proximo_exercicio"}
-assert not (ALVOS & set(X_treino.columns)), "vazamento: alvo entre os atributos!"
-```
+Os erros 6 e 7 não são hipotéticos: a primeira versão deste material cometia os
+dois. A exclusão do IPTU Social vinha depois do split, e uma variável chamada
+`melhor` guardava primeiro o modelo e depois um índice — o arquivo salvo
+continha um número inteiro. Nenhum dos dois gerava mensagem de erro. Foram
+encontrados executando a trilha de ponta a ponta, que é o que o primeiro item do
+checklist pede.
 
 ---
 
@@ -804,6 +1135,7 @@ assert not (ALVOS & set(X_treino.columns)), "vazamento: alvo entre os atributos!
 | `src/modelo.py` | Pipeline, `ColumnTransformer`, serialização, exclusão do grupo protegido | **Usa split aleatório** — não copie essa parte |
 | `src/fairness.py` | As métricas por subgrupo que a Sprint 5 vai pedir | — |
 | `notebooks/eda_sprint2.ipynb` | Formato de notebook documentado | — |
+| `tests/test_aula.py` | Como testar que uma trilha executa de ponta a ponta | — |
 
 Copie o padrão, não o arquivo. A banca pergunta "por que vocês fizeram assim?",
 e a resposta precisa ser sua.

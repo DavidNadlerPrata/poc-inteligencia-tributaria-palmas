@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/DavidNadlerPrata/poc-inteligencia-tributaria-palmas/actions/workflows/ci.yml/badge.svg)](https://github.com/DavidNadlerPrata/poc-inteligencia-tributaria-palmas/actions/workflows/ci.yml)
 [![Python](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-blue)](https://www.python.org/)
-[![Testes](https://img.shields.io/badge/testes-97-brightgreen)](tests/)
+[![Testes](https://img.shields.io/badge/testes-125-brightgreen)](tests/)
 [![Cobertura](https://img.shields.io/badge/cobertura-90%25-brightgreen)](tests/)
 
 ## Publicações
@@ -167,13 +167,15 @@ correspondem ao código.
 | `app/tema.py` | Paleta validada e enxoval dos gráficos |
 | `notebooks/eda_sprint2.ipynb` | **Relatório de EDA da Sprint 2**, executado |
 | `notebooks/gerar_eda.py` | Script que gera o notebook (diff legível no Git) |
-| `tests/` | Suíte com 97 testes — `test_etica.py` é o mais importante |
+| `tests/` | Suíte com 125 testes — `test_etica.py` é o mais importante |
 | `data/carteira_contribuintes.csv` | **Carteira sintética versionada** — 20.000 registros, pronta para abrir |
 | `tests/fixtures/` | Amostra de dados reais para o CI rodar sem acessar a API |
 | `.github/workflows/ci.yml` | Integração contínua (GitHub Actions) |
 | `pyproject.toml` | Configuração do pytest, do linter e da cobertura |
 | `docs/MANUAL_COLETA.md` | **Manual de coleta das APIs da Prefeitura** — guia da Sprint 2 |
-| `docs/AULA_SPRINT4_E3.md` | **Material de aula** — passo a passo do E3 da Sprint 4 |
+| `docs/AULA_SPRINT4_E3.md` | **Material de aula** — passo a passo do E3 da Sprint 4 (arquivo gerado) |
+| `docs/AULA_SPRINT4_E3.modelo.md` | Fonte da aula, com marcadores no lugar dos números — **edite este** |
+| `docs/gerar_aula.py` | Executa a trilha da aula e preenche os números a partir do resultado |
 | `docs/MODEL_CARD.md` | **Componente B** do portfólio |
 | `docs/RIA.md` | **Componente C** do portfólio |
 | `executar_poc.py` | Orquestrador do pipeline completo |
@@ -234,7 +236,7 @@ modelagem.** Discussão completa em [`docs/RIA.md`](docs/RIA.md), seção 2.
 ## Testes
 
 ```bash
-python -m pytest          # 97 testes, ~50 s
+python -m pytest          # 125 testes, ~1 min
 ```
 
 | Arquivo | O que cobre |
