@@ -77,6 +77,8 @@ PUBLICACOES = {
              "Inteligência Tributária de Palmas-TO", "Início"),
             (RAIZ / "docs" / "MANUAL_COLETA.md", "manual-coleta.html",
              "Manual de coleta de dados da Prefeitura de Palmas", "Manual de coleta"),
+            (RAIZ / "docs" / "AULA_SPRINT4_E3.md", "aula-sprint4-e3.html",
+             "Aula — Sprint 4, E3: notebook e modelo serializado", "Aula Sprint 4"),
             (RAIZ / "docs" / "MODEL_CARD.md", "model-card.html",
              "Model Card", "Model Card"),
             (RAIZ / "docs" / "RIA.md", "ria.html",

@@ -7,6 +7,7 @@
 <div class="botoes">
 <a class="botao botao-primario" href="https://github.com/DavidNadlerPrata/poc-inteligencia-tributaria-palmas">Ver o código no GitHub</a>
 <a class="botao botao-secundario" href="manual-coleta.html">Manual de coleta</a>
+<a class="botao botao-secundario" href="aula-sprint4-e3.html">Aula: Sprint 4</a>
 <a class="botao botao-secundario" href="eda.html">Relatório de EDA</a>
 <a class="botao botao-secundario" href="model-card.html">Model Card</a>
 <a class="botao botao-secundario" href="ria.html">Relatório de Impacto</a>
@@ -157,7 +158,7 @@ por quê, do que a que finge ter dados que ninguém tem.
 | 0 — Concepção | M1 — Cálculo Numérico | Normalização vetorial e distância ao centro urbano |
 | 1 — Arquitetura e dados | M2, M3, M4 | DDL em 3FN, índices, estrutura modular do repositório |
 | 2 — Pipeline ETL | M5 — Coleta e ETL | [Manual de coleta](manual-coleta.html), coleta na API real e [relatório de EDA](eda.html) |
-| 3 — Modelo e MVP | M6 — Introdução à IA | Dois modelos e painel Streamlit |
+| 3 — Modelo e MVP | M6 — Introdução à IA | [Material de aula do E3](aula-sprint4-e3.html), dois modelos e painel Streamlit |
 | 4 — Governança | M7 — Ética e LGPD | [Model Card](model-card.html) e [RIA](ria.html) |
 
 ---
