@@ -68,7 +68,15 @@ qualquer evolução do sistema, e verificada por teste automatizado.
 ### 2.1 Métricas aplicadas
 
 Grupo protegido: **faixa de renda predominante do setor urbano** (baixa, média,
-alta). Limiar de alerta: **0,10**.
+alta). Limiar de alerta: **0,10** de diferença, fixado antes da auditoria.
+
+**De onde vem o limiar.** O 0,10 é a convenção do AI Fairness 360 (Bellamy et
+al., 2019), que considera justa uma diferença de paridade entre −0,1 e 0,1. A
+referência jurídica mais antiga é a regra dos quatro quintos da EEOC (1978),
+que olha a razão entre as taxas de seleção e pede ao menos 0,8 — e que Barocas,
+Hardt e Narayanan (2023) tratam como referência, não como regra estrita.
+Nenhum dos dois é norma brasileira, e não há limite consagrado entre eles; por
+isso o laudo informa a diferença e a razão.
 
 **Paridade Demográfica** — as taxas de seleção devem ser parecidas entre grupos:
 
@@ -105,6 +113,28 @@ $$\text{EOD} = \max_a P(\hat{Y}=1 \mid Y=1, A=a) - \min_a P(\hat{Y}=1 \mid Y=1, 
 |---|---|---|---|
 | Paridade Demográfica | 0,1203 | 0,759 | **reprovado** |
 | Igualdade de Oportunidade | 0,1150 | 0,817 | **reprovado** |
+
+**Incerteza da medida.** O conjunto de teste do Modelo 2 tem só 256 dívidas
+de setores de renda alta, então a diferença medida oscila com a amostra. O
+intervalo de confiança de 95%, por bootstrap dentro de cada grupo
+(`src/fairness.py::intervalo_bootstrap`, 2.000 reamostras):
+
+| Modelo e teste | Diferença | IC 95% | Reamostras acima de 0,10 |
+|---|---|---|---|
+| 1 — Paridade Demográfica | 0,3322 | 0,299 a 0,365 | 100% |
+| 1 — Igualdade de Oportunidade | 0,3251 | 0,262 a 0,387 | 100% |
+| 2 — Paridade Demográfica | 0,1203 | 0,059 a 0,194 | 79% |
+| 2 — Igualdade de Oportunidade | 0,1150 | 0,036 a 0,215 | 68% |
+
+O Modelo 1 reprova sem ambiguidade. No Modelo 2, o intervalo contém 0,10: a
+amostra não permite afirmar que a disparidade real passa do limiar — nem que
+fica abaixo dele, já que o intervalo chega a 0,19. Isso **não muda o
+resultado**: a aprovação é a estimativa pontual contra o limiar fixado antes da
+auditoria, e trocar o critério depois de ver o número seria escolher a régua
+pelo resultado. O que o intervalo mostra é que a decisão de aplicar a
+mitigação deve valer mesmo sob incerteza, e que a auditoria com mais dados é
+prioridade. (O intervalo de uma diferença máxima entre três taxas tende a ficar
+um pouco deslocado para cima, porque o ruído infla o máximo.)
 
 ### 2.3 Discussão honesta
 
@@ -305,6 +335,11 @@ explícita — e nenhuma das duas dispensa a auditoria a cada retreino.
 ## Referências
 
 - BAROCAS, S.; HARDT, M.; NARAYANAN, A. *Fairness and Machine Learning*, 2023.
+- BELLAMY, R. K. E. et al. *AI Fairness 360: An Extensible Toolkit for
+  Detecting and Mitigating Algorithmic Bias*. IBM Journal of Research and
+  Development, v. 63, n. 4/5, 2019.
+- EEOC. *Uniform Guidelines on Employee Selection Procedures*, 29 CFR 1607,
+  1978 (regra dos quatro quintos).
 - HARDT, M.; PRICE, E.; SREBRO, N. *Equality of Opportunity in Supervised
   Learning*. NeurIPS, 2016.
 - KLEINBERG, J.; MULLAINATHAN, S.; RAGHAVAN, M. *Inherent Trade-Offs in the Fair

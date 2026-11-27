@@ -439,11 +439,24 @@ with aba_equidade:
         eo = bloco["igualdade_oportunidade"]
 
         c1, c2 = st.columns(2)
-        for coluna, teste in ((c1, dp), (c2, eo)):
+        intervalo = bloco.get("intervalo_95", {})
+        for coluna, teste, chave in ((c1, dp, "paridade_demografica"),
+                                     (c2, eo, "igualdade_oportunidade")):
             aprovado = teste["aprovado"]
+            ic = intervalo.get(chave)
+            ajuda = None
+            if ic:
+                def virgula(x):
+                    return f"{x:.3f}".replace(".", ",")
+                ajuda = (f"Intervalo de confiança de 95% por bootstrap: "
+                         f"{virgula(ic['ic_inferior'])} a {virgula(ic['ic_superior'])}; "
+                         f"{ic['prob_acima_do_limiar']:.0%} das reamostras acima de 0,10. "
+                         "Mede a incerteza do conjunto de teste; a aprovação usa a "
+                         "estimativa pontual.")
             coluna.metric(teste["metrica"], f"{teste['diferenca']:.3f}".replace(".", ","),
                           "dentro do limiar (0,10)" if aprovado else "acima do limiar (0,10)",
-                          delta_color="green" if aprovado else "red", delta_arrow="off")
+                          delta_color="green" if aprovado else "red", delta_arrow="off",
+                          help=ajuda)
 
         if not (dp["aprovado"] and eo["aprovado"]):
             st.error(f"**Disparidade relevante detectada.** O grupo "

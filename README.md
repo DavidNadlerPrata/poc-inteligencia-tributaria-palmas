@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/DavidNadlerPrata/poc-inteligencia-tributaria-palmas/actions/workflows/ci.yml/badge.svg)](https://github.com/DavidNadlerPrata/poc-inteligencia-tributaria-palmas/actions/workflows/ci.yml)
 [![Python](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-blue)](https://www.python.org/)
-[![Testes](https://img.shields.io/badge/testes-196-brightgreen)](tests/)
+[![Testes](https://img.shields.io/badge/testes-202-brightgreen)](tests/)
 [![Cobertura](https://img.shields.io/badge/cobertura-90%25-brightgreen)](tests/)
 
 ## Publicações
@@ -244,7 +244,7 @@ Toda pergunta, ferramenta chamada e resposta fica em
 | `app/tema.py` | Paleta validada e enxoval dos gráficos |
 | `notebooks/eda_sprint2.ipynb` | **Relatório de EDA da Sprint 2**, executado |
 | `notebooks/gerar_eda.py` | Script que gera o notebook (diff legível no Git) |
-| `tests/` | Suíte com 196 testes — `test_etica.py` é o mais importante |
+| `tests/` | Suíte com 202 testes — `test_etica.py` é o mais importante |
 | `data/carteira_contribuintes.csv` | **Carteira sintética versionada** — 20.000 registros, pronta para abrir |
 | `tests/fixtures/` | Amostra de dados reais para o CI rodar sem acessar a API |
 | `.github/workflows/ci.yml` | Integração contínua (GitHub Actions) |
@@ -294,6 +294,12 @@ escolhas da calibração no [Model Card](docs/MODEL_CARD.md), seção 5.
 | 2 — recuperabilidade | 0,1203 | 0,1150 | **reprovado** (a favor dos setores ricos) |
 | 2, com limiar calibrado por grupo | 0,0008 | 0,085 | aprovado |
 
+Limiar de 0,10: convenção do AI Fairness 360 (Bellamy et al., 2019); a regra
+dos quatro quintos da EEOC, que olha a razão entre as taxas, é a segunda
+referência. No Modelo 2 o intervalo de confiança de 95% por bootstrap vai de
+0,059 a 0,194 na paridade — contém o limiar, porque o teste tem só 256 casos de
+renda alta. O critério, fixado antes, não muda por isso.
+
 **O achado central do PoC.** Dois modelos, mesmos dados, mesmo algoritmo, vieses
 de sentido e intensidade diferentes. Perguntar *"quem provavelmente deve?"*
 produz um modelo que aprende sobre pobreza — morador de setor pobre tem 2,6×
@@ -319,7 +325,7 @@ fila com o limiar calibrado por grupo. Discussão completa em
 ## Testes
 
 ```bash
-python -m pytest          # 196 testes, ~1 min
+python -m pytest          # 202 testes, ~1 min
 ```
 
 | Arquivo | O que cobre |

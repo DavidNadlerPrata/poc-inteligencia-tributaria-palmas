@@ -51,6 +51,12 @@ quanto à qualidade do acerto.
 | Equilíbrio na seleção de casos | 0,120 | 0,001 | 0,10 | <span class="selo selo-aprovado">aprovado</span> |
 | Equilíbrio na qualidade do acerto | 0,115 | 0,085 | 0,10 | <span class="selo selo-aprovado">aprovado</span> |
 
+O limite de 0,10 é o adotado por uma ferramenta de auditoria de referência
+internacional, e foi fixado antes de medir. Como a simulação tem poucos casos
+de setores de renda alta, a diferença sem ajuste pode estar, na realidade,
+entre 0,06 e 0,19. Por isso o ajuste é aplicado de qualquer forma, e a
+auditoria deve ser refeita com os dados reais.
+
 **Sem ajuste, o sistema passou do limite.** Ele tendia a pôr à frente da fila
 os débitos de setores de renda alta e a reconhecer menos os débitos
 recuperáveis dos setores de renda baixa. O motivo é que características como o

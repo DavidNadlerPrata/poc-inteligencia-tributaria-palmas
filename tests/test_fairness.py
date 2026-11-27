@@ -53,7 +53,7 @@ class TestParidadeDemografica:
         assert resultado["grupo_menos_selecionado"] == "b"
 
     def test_limiar_de_alerta_e_dez_por_cento(self):
-        """O limiar 0,10 vem de Barocas, Hardt e Narayanan (2023)."""
+        """O limiar 0,10 e a convencao do AI Fairness 360 (Bellamy et al., 2019)."""
         assert fairness.LIMIAR_ALERTA == 0.10
 
 
@@ -165,3 +165,48 @@ class TestAuditoriaCompleta:
         resultado = fairness.auditar(dados)
         for teste in ("paridade_demografica", "igualdade_oportunidade"):
             assert isinstance(resultado[teste]["aprovado"], bool)
+
+
+class TestIntervaloBootstrap:
+    """Incerteza de amostragem das diferencas, por bootstrap dentro de cada grupo."""
+
+    @staticmethod
+    def carteira(taxa_a: float, taxa_b: float, n: int, semente: int = 1) -> pd.DataFrame:
+        rng = np.random.default_rng(semente)
+        real = rng.integers(0, 2, size=2 * n)
+        pred = np.concatenate([rng.random(n) < taxa_a, rng.random(n) < taxa_b]).astype(int)
+        return montar(["a"] * n + ["b"] * n, real, pred)
+
+    def test_intervalo_contem_a_estimativa_pontual(self):
+        resultado = fairness.intervalo_bootstrap(self.carteira(0.6, 0.45, 300), n_reamostras=500)
+        for nome in ("paridade_demografica", "igualdade_oportunidade"):
+            bloco = resultado[nome]
+            assert bloco["ic_inferior"] <= bloco["diferenca"] <= bloco["ic_superior"]
+
+    def test_estimativa_pontual_e_a_mesma_da_auditoria(self):
+        dados = self.carteira(0.6, 0.45, 300)
+        auditoria = fairness.paridade_demografica(
+            fairness.metricas_por_grupo(dados, "faixa_renda_setor"))
+        resultado = fairness.intervalo_bootstrap(dados, n_reamostras=200)
+        assert resultado["paridade_demografica"]["diferenca"] == auditoria["diferenca"]
+
+    def test_reprodutivel_com_a_mesma_semente(self):
+        dados = self.carteira(0.6, 0.45, 300)
+        assert (fairness.intervalo_bootstrap(dados, n_reamostras=300, semente=7)
+                == fairness.intervalo_bootstrap(dados, n_reamostras=300, semente=7))
+
+    def test_mais_casos_estreitam_o_intervalo(self):
+        def largura(n):
+            bloco = fairness.intervalo_bootstrap(self.carteira(0.6, 0.45, n),
+                                                 n_reamostras=500)["paridade_demografica"]
+            return bloco["ic_superior"] - bloco["ic_inferior"]
+        assert largura(4_000) < largura(200) / 3
+
+    def test_disparidade_clara_fica_toda_acima_do_limiar(self):
+        resultado = fairness.intervalo_bootstrap(self.carteira(0.8, 0.2, 500), n_reamostras=500)
+        assert resultado["paridade_demografica"]["ic_inferior"] > fairness.LIMIAR_ALERTA
+        assert resultado["paridade_demografica"]["prob_acima_do_limiar"] == 1.0
+
+    def test_grupos_iguais_ficam_abaixo_do_limiar(self):
+        resultado = fairness.intervalo_bootstrap(self.carteira(0.5, 0.5, 5_000), n_reamostras=500)
+        assert resultado["paridade_demografica"]["ic_superior"] < fairness.LIMIAR_ALERTA

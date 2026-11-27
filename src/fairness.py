@@ -13,8 +13,12 @@ externa -- as formulas sao curtas e explicita-las tem valor pedagogico.
    o sistema acerta os casos positivos com a mesma competencia em todo grupo.
        EOD = max_a TPR_a - min_a TPR_a
 
-Leitura das metricas: 0 e paridade perfeita. A literatura (Barocas, Hardt e
-Narayanan, 2023) trata diferencas acima de 0,10 como materialmente relevantes.
+Leitura das metricas: 0 e paridade perfeita. O limiar de alerta de 0,10 para
+a diferenca e a convencao do AI Fairness 360 (Bellamy et al., IBM, 2019), que
+considera justa a diferenca de paridade entre -0,1 e 0,1. A referencia juridica
+mais antiga e a regra dos quatro quintos da EEOC (1978): razao entre taxas de
+selecao de ao menos 0,8 -- que Barocas, Hardt e Narayanan (2023) tratam como
+referencia, nao como regra estrita. Por isso o laudo informa diferenca e razao.
 Os dois criterios sao matematicamente incompativeis quando a prevalencia real
 difere entre grupos -- e o caso aqui, e o RIA discute a escolha.
 """
@@ -107,6 +111,54 @@ def auditar(dados: pd.DataFrame, coluna_grupo: str = "faixa_renda_setor",
     return {"por_grupo": por_grupo.to_dict("records"),
             "paridade_demografica": dp,
             "igualdade_oportunidade": eo}
+
+
+def intervalo_bootstrap(dados: pd.DataFrame, coluna_grupo: str = "faixa_renda_setor",
+                        col_real: str = "y_real", col_pred: str = "y_pred",
+                        n_reamostras: int = 2000, nivel: float = 0.95,
+                        semente: int = 42) -> dict:
+    """Intervalo de confianca por bootstrap para as duas diferencas.
+
+    Reamostra os registros com reposicao DENTRO de cada grupo -- o tamanho de
+    cada grupo fica igual ao do teste -- e recalcula as diferencas de taxa de
+    selecao e de recall. O intervalo e o dos percentis da distribuicao obtida.
+
+    Mede a incerteza de amostragem do conjunto de teste: com poucos casos num
+    grupo, uma diferenca de 0,12 pode ser ruido. NAO mede a variacao que viria
+    de treinar o modelo de novo, nem muda o criterio de aprovacao, que continua
+    sendo a estimativa pontual contra o limiar fixado antes da auditoria.
+
+    Cuidado de leitura: a diferenca e o maximo menos o minimo de tres taxas, e
+    o ruido infla o maximo. O intervalo tende, portanto, a ficar um pouco
+    deslocado para cima.
+    """
+    rng = np.random.default_rng(semente)
+    selecao, recall = [], []
+    for _, bloco in dados.groupby(coluna_grupo):
+        real = bloco[col_real].to_numpy()
+        pred = bloco[col_pred].to_numpy()
+        indices = rng.integers(0, len(bloco), size=(n_reamostras, len(bloco)))
+        real_r, pred_r = real[indices], pred[indices]
+        selecao.append(pred_r.mean(axis=1))
+        positivos = real_r == 1
+        with np.errstate(invalid="ignore"):
+            recall.append((pred_r * positivos).sum(axis=1) / positivos.sum(axis=1))
+
+    cauda = (1 - nivel) / 2 * 100
+    resultado = {"n_reamostras": n_reamostras, "nivel": nivel}
+    pontuais = {"paridade_demografica": paridade_demografica,
+                "igualdade_oportunidade": igualdade_oportunidade}
+    por_grupo = metricas_por_grupo(dados, coluna_grupo, col_real, col_pred)
+    for nome, taxas in (("paridade_demografica", selecao), ("igualdade_oportunidade", recall)):
+        matriz = np.vstack(taxas)
+        diferencas = np.nanmax(matriz, axis=0) - np.nanmin(matriz, axis=0)
+        resultado[nome] = {
+            "diferenca": pontuais[nome](por_grupo)["diferenca"],
+            "ic_inferior": round(float(np.nanpercentile(diferencas, cauda)), 4),
+            "ic_superior": round(float(np.nanpercentile(diferencas, 100 - cauda)), 4),
+            "prob_acima_do_limiar": round(float(np.nanmean(diferencas > LIMIAR_ALERTA)), 4),
+        }
+    return resultado
 
 
 def simular_mitigacao(dados: pd.DataFrame, coluna_grupo: str = "faixa_renda_setor",

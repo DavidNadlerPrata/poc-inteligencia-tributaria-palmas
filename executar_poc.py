@@ -111,6 +111,9 @@ def main() -> int:
         "inadimplencia": fairness.auditar(teste_inad, titulo="- Modelo 1 (inadimplencia)"),
         "recuperabilidade": fairness.auditar(teste_rec, titulo="- Modelo 2 (recuperabilidade)"),
     }
+    # Incerteza de amostragem das diferencas (bootstrap dentro de cada grupo).
+    for chave, teste in (("inadimplencia", teste_inad), ("recuperabilidade", teste_rec)):
+        auditoria[chave]["intervalo_95"] = fairness.intervalo_bootstrap(teste)
     mitigacao = fairness.simular_mitigacao(teste_rec)
 
     for chave in auditoria:

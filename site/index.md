@@ -57,8 +57,10 @@ explícita e auditável.</p>
 | 2 — recuperabilidade | 0,1203 | 0,1150 | <span class="selo selo-reprovado">reprovado</span> |
 | 2, com limiar calibrado por grupo | 0,0008 | 0,085 | <span class="selo selo-aprovado">aprovado</span> |
 
-O limiar adotado é 0,10, seguindo Barocas, Hardt e Narayanan (2023). A
-consequência prática é direta: **apenas o Modelo 2 ordena a fila de cobrança, e
+O limiar adotado é 0,10 de diferença, convenção do AI Fairness 360 (Bellamy et
+al., 2019). Com só 256 casos de renda alta no teste, o intervalo de confiança
+de 95% da paridade do Modelo 2 vai de 0,059 a 0,194 — contém o limiar, mas o
+critério, fixado antes da auditoria, não muda por isso. A consequência prática é direta: **apenas o Modelo 2 ordena a fila de cobrança, e
 só com o limiar calibrado por grupo**. O Modelo 1 fica restrito a uso
 diagnóstico — dimensionar o problema, planejar educação fiscal, subsidiar
 política pública.
@@ -74,7 +76,7 @@ paridade e calibração ao mesmo tempo, está no
 <div class="cartoes">
 <div class="cartao"><div class="valor">17.507</div><div class="rotulo">registros reais coletados da API da Prefeitura</div></div>
 <div class="cartao"><div class="valor">54,9%</div><div class="rotulo">do retorno esperado concentrado nos 20% melhores casos</div></div>
-<div class="cartao"><div class="valor">196</div><div class="rotulo">testes automatizados, 94% de cobertura</div></div>
+<div class="cartao"><div class="valor">202</div><div class="rotulo">testes automatizados, 94% de cobertura</div></div>
 <div class="cartao"><div class="valor">0,0008</div><div class="rotulo">disparidade após mitigação (era 0,1203)</div></div>
 </div>
 

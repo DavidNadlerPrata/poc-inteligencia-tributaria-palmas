@@ -169,8 +169,10 @@ concentram **mais casos** de inadimplência, mas setores de renda alta concentra
 ## 6. Análise de viés
 
 Testes aplicados: Paridade Demográfica e Igualdade de Oportunidade. Limiar
-adotado: 0,10 (Barocas, Hardt e Narayanan, 2023). Detalhamento completo no
-[RIA](RIA.md), seção 2.
+adotado: 0,10 de diferença, convenção do AI Fairness 360 (Bellamy et al.,
+2019); a regra dos quatro quintos da EEOC (1978), que olha a razão entre as
+taxas e pede ao menos 0,8, aparece no RIA como segunda referência. Detalhamento
+completo, com intervalos de confiança, no [RIA](RIA.md), seção 2.
 
 ### Modelo 1 — inadimplência: **reprovado**
 
@@ -191,8 +193,13 @@ adotado: 0,10 (Barocas, Hardt e Narayanan, 2023). Detalhamento completo no
 | média | 691 | 0,450 | 0,386 | 0,540 |
 | baixa | 1.064 | 0,402 | 0,380 | 0,514 |
 
-- Paridade Demográfica: **0,1203** (limiar 0,10) — reprovado
-- Igualdade de Oportunidade: **0,1150** (limiar 0,10) — reprovado
+- Paridade Demográfica: **0,1203** (limiar 0,10) — reprovado; IC 95% de
+  0,059 a 0,194
+- Igualdade de Oportunidade: **0,1150** (limiar 0,10) — reprovado; IC 95% de
+  0,036 a 0,215
+- Os intervalos contêm 0,10: com 256 casos de renda alta no teste, a amostra
+  não distingue a disparidade real do limiar. O critério não muda por isso — a
+  aprovação é a estimativa pontual contra o limiar fixado antes.
 - Com limiar calibrado por grupo (`src/fairness.py::simular_mitigacao`), a
   disparidade na taxa de seleção cai para **0,0008**.
 
@@ -252,6 +259,11 @@ ser divulgado no próprio documento de cobrança — não apenas neste Model Car
 
 - MITCHELL, M. et al. *Model Cards for Model Reporting*. ACM FAccT, 2019.
 - BAROCAS, S.; HARDT, M.; NARAYANAN, A. *Fairness and Machine Learning*, 2023.
+- BELLAMY, R. K. E. et al. *AI Fairness 360: An Extensible Toolkit for
+  Detecting and Mitigating Algorithmic Bias*. IBM Journal of Research and
+  Development, v. 63, n. 4/5, 2019.
+- EEOC. *Uniform Guidelines on Employee Selection Procedures*, 29 CFR 1607,
+  1978 (regra dos quatro quintos).
 - HARDT, M.; PRICE, E.; SREBRO, N. *Equality of Opportunity in Supervised
   Learning*. NeurIPS, 2016.
 - BRASIL. Lei n. 13.709/2018 (LGPD).
