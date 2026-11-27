@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import sqlite3
 
+import numpy as np
 import pandas as pd
 import pytest
 
@@ -149,6 +150,65 @@ class TestCalibracao:
         """O vies deliberado precisa existir: sem ele a Sprint 4 fica vazia."""
         por_renda = carteira.groupby("faixa_renda_setor")["inadimplente_proximo_exercicio"].mean()
         assert por_renda["baixa"] > por_renda["media"] > por_renda["alta"]
+
+
+@pytest.fixture(scope="module")
+def carteira_completa():
+    """Carteira no tamanho do PoC: com 20.000 registros, o ruido de amostragem
+    das proporcoes fica perto de 0,35 ponto percentual."""
+    return sintetico.gerar_carteira()
+
+
+class TestCalibracaoDosDevedores:
+    """Proporcao de devedores, inadimplencia anual e grandezas monetarias.
+
+    As referencias e a hipotese adotada estao em config.py e no Model Card,
+    secao 5.
+    """
+
+    def test_proporcao_de_devedores(self, carteira_completa):
+        obtida = (carteira_completa["valor_divida_consolidada"] > 0).mean()
+        assert obtida == pytest.approx(config.PROPORCAO_COM_DIVIDA, abs=0.015)
+
+    def test_inadimplencia_anual(self, carteira_completa):
+        obtida = carteira_completa["inadimplente_proximo_exercicio"].mean()
+        assert obtida == pytest.approx(config.INADIMPLENCIA_ANUAL, abs=0.015)
+
+    def test_iptu_compativel_com_a_arrecadacao_real(self, carteira_completa):
+        """R$ 43 mi pagos a vista por 51.421 contribuintes em 2026 (com desconto)
+        dao cerca de R$ 840 por imovel. Reescalar o IPTU junto com a divida, como
+        a primeira versao fazia, levaria a media para perto de R$ 5 mil."""
+        assert 700 < carteira_completa["valor_iptu_anual"].mean() < 1_400
+
+    def test_encargos_plausiveis(self, carteira_completa):
+        """Divida sobre o IPTU dos exercicios em aberto: multa, juros e correcao."""
+        devedores = carteira_completa[carteira_completa["valor_divida_consolidada"] > 0]
+        principal = (devedores["valor_iptu_anual"] * devedores["exercicios_inadimplentes_5a"]).sum()
+        fator = devedores["valor_divida_consolidada"].sum() / principal
+        assert 1.5 < fator < 3.0
+
+    def test_devedor_e_recorrente(self, carteira_completa):
+        devedores = carteira_completa[carteira_completa["valor_divida_consolidada"] > 0]
+        assert devedores["exercicios_inadimplentes_5a"].mean() > 3
+
+    def test_vies_por_renda_sobrevive_a_calibracao(self, carteira_completa):
+        tem_divida = carteira_completa["valor_divida_consolidada"] > 0
+        por_renda = tem_divida.groupby(carteira_completa["faixa_renda_setor"]).mean()
+        assert por_renda["baixa"] > por_renda["media"] > por_renda["alta"]
+
+
+class TestBisseccao:
+
+    @pytest.mark.parametrize("alvo", [0.10, 0.44, 0.83])
+    def test_encontra_o_deslocamento(self, alvo):
+        propensao = np.random.default_rng(0).normal(0, 1.2, 5_000)
+        deslocamento = sintetico._deslocamento_para_proporcao(propensao, alvo)
+        assert sintetico._sigmoide(propensao + deslocamento).mean() == pytest.approx(alvo, abs=1e-9)
+
+    @pytest.mark.parametrize("alvo", [0.0, 1.0, -0.2, 1.5])
+    def test_recusa_proporcao_impossivel(self, alvo):
+        with pytest.raises(ValueError):
+            sintetico._deslocamento_para_proporcao(np.zeros(10), alvo)
 
 
 class TestEsquemaDoBanco:

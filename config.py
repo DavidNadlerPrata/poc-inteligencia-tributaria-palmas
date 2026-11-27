@@ -43,6 +43,20 @@ DIVIDA_ISS = 380_000_000.0           # R$ 380 milhoes
 IMOVEIS_TRIBUTAVEIS = 111_252
 META_ADIMPLENCIA = 0.67              # 74.606 contribuintes
 
+# Inadimplencia anual no IPTU: 44%, a unica medicao publica encontrada
+# (reportagem da TV Anhanguera/Globoplay, jan/2018). A meta oficial de 67% de
+# adimplencia para 2026 (Prefeitura de Palmas, noticia de 10/04/2026) indica
+# que o patamar real segue acima de 33%.
+INADIMPLENCIA_ANUAL = 0.44
+
+# Fracao dos imoveis com divida inscrita (ao menos um exercicio em aberto nos
+# ultimos 5 anos). HIPOTESE, nao dado oficial: a Sefin nao publica quantos
+# imoveis tem divida ativa. Supomos que quem esta em divida e, em grande parte,
+# quem deixa de pagar o exercicio -- devedor de divida ativa costuma ser
+# recorrente. Troque os dois valores quando houver o numero real da Sefin: o
+# gerador se recalibra sozinho.
+PROPORCAO_COM_DIVIDA = INADIMPLENCIA_ANUAL
+
 # Tamanho da carteira simulada no PoC (amostra dos imoveis tributaveis).
 TAMANHO_AMOSTRA = 20_000
 SEMENTE = 42
