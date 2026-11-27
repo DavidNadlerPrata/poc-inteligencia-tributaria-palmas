@@ -39,8 +39,23 @@ st.set_page_config(page_title="Inteligencia Tributaria | Palmas-TO",
 # --------------------------------------------------------------------------
 # Carga de dados (em cache: o painel nao recalcula a cada interacao)
 # --------------------------------------------------------------------------
-@st.cache_data
-def carregar():
+ARTEFATOS = [config.BANCO, config.METRICAS, config.CSV_ARRECADACAO,
+             config.DADOS / "fila_cobranca.csv", config.DADOS / "auditoria_fairness.json",
+             config.DADOS / "mitigacao_fairness.csv", config.DADOS / "importancia_atributos.csv"]
+
+
+def versao_dos_artefatos() -> tuple:
+    """Data de modificacao de cada arquivo lido pelo painel.
+
+    Entra como argumento de carregar(): quando o pipeline roda de novo, a versao
+    muda e o cache e refeito. Sem isso, o painel aberto continuaria mostrando
+    os resultados da execucao anterior ate o servidor ser reiniciado.
+    """
+    return tuple(a.stat().st_mtime_ns if a.exists() else None for a in ARTEFATOS)
+
+
+@st.cache_data(max_entries=2)
+def carregar(versao: tuple):  # versao so compoe a chave do cache
     import etl
 
     if not config.BANCO.exists():
@@ -89,7 +104,7 @@ def modo_escuro() -> bool:
 
 P = tema.paleta(modo_escuro())
 
-pacote = carregar()
+pacote = carregar(versao_dos_artefatos())
 if pacote is None:
     st.error("Banco de dados nao encontrado. Rode antes:  `python executar_poc.py`")
     st.stop()
@@ -426,7 +441,7 @@ with aba_equidade:
         c1, c2 = st.columns(2)
         for coluna, teste in ((c1, dp), (c2, eo)):
             aprovado = teste["aprovado"]
-            coluna.metric(teste["metrica"], f"{teste['diferenca']:.3f}",
+            coluna.metric(teste["metrica"], f"{teste['diferenca']:.3f}".replace(".", ","),
                           "dentro do limiar (0,10)" if aprovado else "acima do limiar (0,10)",
                           delta_color="green" if aprovado else "red", delta_arrow="off")
 
