@@ -84,40 +84,40 @@ $$\text{EOD} = \max_a P(\hat{Y}=1 \mid Y=1, A=a) - \min_a P(\hat{Y}=1 \mid Y=1, 
 
 | Grupo | n | Prevalência real | Taxa de seleção | Recall | FPR | Precisão |
 |---|---|---|---|---|---|---|
-| alta | 1.028 | 0,367 | 0,203 | 0,310 | 0,141 | 0,560 |
-| média | 1.647 | 0,477 | 0,427 | 0,559 | 0,307 | 0,625 |
-| baixa | 1.977 | 0,605 | 0,678 | 0,786 | 0,512 | 0,702 |
+| alta | 1.030 | 0,293 | 0,203 | 0,450 | 0,100 | 0,651 |
+| média | 1.674 | 0,376 | 0,341 | 0,640 | 0,161 | 0,706 |
+| baixa | 1.966 | 0,555 | 0,535 | 0,775 | 0,235 | 0,804 |
 
 | Teste | Diferença | Razão | Resultado |
 |---|---|---|---|
-| Paridade Demográfica | 0,4745 | 0,300 | **reprovado** |
-| Igualdade de Oportunidade | 0,4757 | 0,395 | **reprovado** |
+| Paridade Demográfica | 0,3322 | 0,379 | **reprovado** |
+| Igualdade de Oportunidade | 0,3251 | 0,581 | **reprovado** |
 
-**Modelo 2 — recuperabilidade: APROVADO nos dois testes**
+**Modelo 2 — recuperabilidade: REPROVADO nos dois testes, com viés no sentido oposto**
 
 | Grupo | n | Prevalência real | Taxa de seleção | Recall | FPR | Precisão |
 |---|---|---|---|---|---|---|
-| alta | 704 | 0,548 | 0,619 | 0,723 | 0,494 | 0,640 |
-| média | 1.362 | 0,499 | 0,583 | 0,706 | 0,460 | 0,605 |
-| baixa | 1.775 | 0,515 | 0,572 | 0,682 | 0,455 | 0,614 |
+| alta | 256 | 0,484 | 0,500 | 0,629 | 0,379 | 0,609 |
+| média | 691 | 0,450 | 0,386 | 0,540 | 0,261 | 0,629 |
+| baixa | 1.064 | 0,402 | 0,380 | 0,514 | 0,289 | 0,545 |
 
 | Teste | Diferença | Razão | Resultado |
 |---|---|---|---|
-| Paridade Demográfica | 0,0475 | 0,923 | aprovado |
-| Igualdade de Oportunidade | 0,0412 | 0,943 | aprovado |
+| Paridade Demográfica | 0,1203 | 0,759 | **reprovado** |
+| Igualdade de Oportunidade | 0,1150 | 0,817 | **reprovado** |
 
 ### 2.3 Discussão honesta
 
 **O viés do Modelo 1 é real e grave.** Um morador de setor de renda baixa tem
-**3,3 vezes** mais chance de ser sinalizado como inadimplente que um morador de
-setor de renda alta (0,678 contra 0,203). Se essa saída dirigisse a intensidade
+**2,6 vezes** mais chance de ser sinalizado como inadimplente que um morador de
+setor de renda alta (0,535 contra 0,203). Se essa saída dirigisse a intensidade
 de fiscalização, o sistema concentraria o aparato fiscal do município sobre a
 população mais pobre — exatamente o risco que O'Neil (2021) descreve: um modelo
 que aprende uma desigualdade existente e a devolve como decisão automatizada,
 com aparência de neutralidade técnica.
 
 **Mas o viés não é um bug de programação.** A prevalência real de inadimplência
-difere de fato entre os grupos (0,605 contra 0,367). Um classificador bem
+difere de fato entre os grupos (0,555 contra 0,293). Um classificador bem
 calibrado *tem* que refletir isso — é o que significa estar calibrado. O
 problema não está no modelo: está em usar essa saída para decidir sobre pessoas.
 
@@ -127,13 +127,22 @@ Mullainathan e Raghavan, 2016). Não existe escolha tecnicamente neutra aqui:
 há uma decisão de valor a tomar, e ela deve ser tomada explicitamente, por
 quem tem legitimidade para isso — não escondida num hiperparâmetro.
 
-**Por que o Modelo 2 passa.** A recuperabilidade tem prevalência parecida em
-todos os grupos (0,50 a 0,55): recuperar uma dívida depende muito mais do tempo
-desde a inscrição e do histórico de parcelamento do que da renda do setor. A
-importância por permutação confirma — `tempo_inadimplencia_dias` domina (0,157),
-mais de cinco vezes o segundo colocado, enquanto `setor_urbano` fica em 0,008.
-**O modelo aprendeu a olhar para o processo, não para a pessoa.** É por isso que
-ele pode ordenar a fila.
+**O Modelo 2 erra menos, mas também reprova — e no sentido oposto.** Ele
+considera recuperáveis 50,0% das dívidas dos setores de renda alta e 38,0% das
+dos setores de renda baixa, e reconhece menos as dívidas que de fato seriam
+recuperadas nos setores pobres (recall de 0,514 contra 0,629). Há duas causas.
+A primeira é real: a recuperação difere entre grupos (0,484 contra 0,402). A
+segunda é aprendida: o atributo dominante é o tempo de inadimplência (0,218 na
+importância por permutação), mas logo depois vêm valor venal (0,065) e
+distância ao centro (0,055), que funcionam como substitutos da renda. Tirar a
+faixa de renda dos atributos não bastou — os substitutos a trouxeram de volta.
+
+**O que "ser selecionado" significa muda o sentido do dano.** No Modelo 2, ser
+selecionado é entrar no topo da fila. Se a ação for cobrança coercitiva, o
+viés pesa sobre os setores ricos. Se for oferta de parcelamento ou de
+regularização, quem perde são os devedores dos setores pobres que pagariam e
+não são procurados. O mesmo número tem leituras opostas conforme a ação; por
+isso a auditoria precisa ser lida junto com o uso que a Sefin fizer da fila.
 
 ### 2.4 Mitigação adotada
 
@@ -143,17 +152,19 @@ exclusivamente o Modelo 2. O Modelo 1 fica restrito a uso diagnóstico
 É a mitigação mais eficaz porque elimina o dano na origem, em vez de tentar
 corrigi-lo depois.
 
-**Decisão 2 — limiar calibrado por grupo no Modelo 2.** Implementada em
-`src/fairness.py::simular_mitigacao`, seguindo o pós-processamento de Hardt,
-Price e Srebro (2016):
+**Decisão 2 — limiar calibrado por grupo no Modelo 2, obrigatório.** Sem ele, o
+Modelo 2 reprova na auditoria; por isso a mitigação deixa de ser opcional.
+Implementada em `src/fairness.py::simular_mitigacao`, seguindo o
+pós-processamento de Hardt, Price e Srebro (2016):
 
 | Grupo | Limiar calibrado | Taxa de seleção antes | Depois | Recall depois |
 |---|---|---|---|---|
-| alta | 0,5179 | 0,619 | 0,584 | 0,700 |
-| média | 0,4990 | 0,583 | 0,584 | 0,709 |
-| baixa | 0,4938 | 0,572 | 0,584 | 0,698 |
+| alta | 0,5815 | 0,500 | 0,398 | 0,468 |
+| média | 0,4957 | 0,386 | 0,398 | 0,553 |
+| baixa | 0,4919 | 0,380 | 0,398 | 0,526 |
 
-Disparidade na taxa de seleção: **0,0475 → 0,0006**.
+Disparidade na taxa de seleção: **0,1203 → 0,0008**. A diferença de recall cai
+de 0,1150 para 0,085 e também fica abaixo do limiar de 0,10.
 
 Escolhemos essa técnica por três razões: não exige retreinar, não altera os
 dados, e — decisivo num órgão público — é **auditável**: o limiar de cada grupo
@@ -166,8 +177,8 @@ pública explícita. A justificativa aqui é que a alternativa (limiar único)
 produz disparidade maior. Não é uma solução sem custo; é uma escolha entre dois
 custos, feita às claras.
 
-**Decisão 3 — exclusão dos grupos protegidos.** 1.393 beneficiários do IPTU
-Social (7,0% da carteira) são removidos antes de qualquer treino ou predição.
+**Decisão 3 — exclusão dos grupos protegidos.** 1.320 beneficiários do IPTU
+Social (6,6% da carteira) são removidos antes de qualquer treino ou predição.
 
 ---
 
@@ -183,14 +194,15 @@ dependência externa que dificulte a auditoria.
 
 | Atributo | Importância |
 |---|---|
-| `tempo_inadimplencia_dias` | 0,1569 |
-| `qtd_parcelamentos_anteriores` | 0,0295 |
-| `valor_divida_consolidada` | 0,0281 |
-| `parcelamento_rompido` | 0,0229 |
-| `distancia_centro_km` | 0,0140 |
-| `valor_venal` | 0,0116 |
-| `area_construida_m2` | 0,0101 |
-| `setor_urbano` | 0,0077 |
+| `tempo_inadimplencia_dias` | 0,2184 |
+| `valor_venal` | 0,0646 |
+| `valor_divida_consolidada` | 0,0632 |
+| `distancia_centro_km` | 0,0553 |
+| `valor_iptu_anual` | 0,0527 |
+| `area_construida_m2` | 0,0515 |
+| `qtd_parcelamentos_anteriores` | 0,0364 |
+| `parcelamento_rompido` | 0,0251 |
+| `setor_urbano` | 0,0152 |
 
 ### 3.2 Exemplo de explicação gerada
 
@@ -198,8 +210,8 @@ Predição real do simulador do painel, para um imóvel residencial no Plano
 Diretor Sul, valor venal R$ 180.000, dívida de R$ 4.800 com 540 dias de
 inadimplência e um parcelamento anterior não rompido:
 
-> **Probabilidade de recuperação: 74,1% — faixa alta.**
-> **Retorno esperado: R$ 3.559,17.**
+> **Probabilidade de recuperação: 69,9% — faixa alta.**
+> **Retorno esperado: R$ 3.353,11.**
 
 Explicação em linguagem acessível ao contribuinte:
 
@@ -230,7 +242,7 @@ Uma explicação que só a equipe entende não cumpre o Art. 20.
 ### 4.1 Impactos positivos esperados
 
 - **Eficiência da máquina pública.** Os 20% melhores casos da fila concentram
-  **50,5%** do retorno esperado. Direcionar esforço por essa ordenação aumenta a
+  **54,9%** do retorno esperado. Direcionar esforço por essa ordenação aumenta a
   recuperação sem ampliar a equipe.
 - **Recursos para política pública.** Dívida ativa recuperada financia saúde,
   educação e infraestrutura. Não cobrar quem pode pagar transfere o custo para
@@ -245,6 +257,7 @@ Uma explicação que só a equipe entende não cumpre o Art. 20.
 | Risco | Gravidade | Mitigação adotada |
 |---|---|---|
 | Concentrar fiscalização sobre população pobre | **Alta** | Modelo 1 fora da priorização; limiar calibrado no Modelo 2 |
+| Fila que reconhece menos as dívidas recuperáveis dos setores pobres | Média | Limiar calibrado por grupo, obrigatório no Modelo 2 |
 | Automatizar decisão sem revisão humana | **Alta** | Sistema entrega fila, não veredito; registro obrigatório de predições |
 | Atingir contribuinte vulnerável | **Alta** | Exclusão do IPTU Social por construção, verificada em teste |
 | Reforçar viés histórico da cobrança | Média | Auditoria obrigatória a cada retreino, com publicação |
@@ -277,12 +290,15 @@ do IPTU Social e revisão humana obrigatória.
 
 O achado mais importante deste trabalho é metodológico, e vale além deste
 projeto: **dois modelos treinados sobre os mesmos dados, com o mesmo algoritmo,
-tiveram comportamentos éticos opostos** — reprovado nos dois testes contra
-aprovado nos dois. A diferença não está na técnica, está na **pergunta**.
-Perguntar "quem provavelmente deve?" produz um modelo que aprende sobre
-pobreza. Perguntar "de quem se consegue recuperar?" produz um modelo que aprende
-sobre processo de cobrança. A escolha da variável-alvo é uma decisão ética, não
-apenas técnica — e é tomada antes de qualquer linha de código de modelagem.
+tiveram vieses de intensidade e sentido diferentes**. Perguntar "quem
+provavelmente deve?" produz um modelo que aprende sobre pobreza (disparidade de
+0,33, contra os setores pobres). Perguntar "de quem se consegue recuperar?"
+produz um modelo que aprende sobretudo sobre o processo de cobrança — o tempo
+de inadimplência domina —, mas ainda carrega a renda pelos seus substitutos
+(disparidade de 0,12, a favor dos setores ricos). A escolha da variável-alvo é
+uma decisão ética, não apenas técnica, e reduz o viés; não o elimina. O que
+torna o Modelo 2 utilizável é a combinação da pergunta certa com a mitigação
+explícita — e nenhuma das duas dispensa a auditoria a cada retreino.
 
 ---
 

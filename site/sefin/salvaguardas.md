@@ -46,14 +46,21 @@ internacionalmente. Os dois comparam se o sistema trata as regiões de forma
 equilibrada — o primeiro quanto à frequência com que seleciona casos, o segundo
 quanto à qualidade do acerto.
 
-| Critério | Diferença encontrada | Limiar aceitável | Situação |
-|---|---|---|---|
-| Equilíbrio na seleção de casos | 0,047 | 0,10 | <span class="selo selo-aprovado">aprovado</span> |
-| Equilíbrio na qualidade do acerto | 0,041 | 0,10 | <span class="selo selo-aprovado">aprovado</span> |
+| Critério | Sem ajuste | Com ajuste por região | Limite aceitável | Situação final |
+|---|---|---|---|---|
+| Equilíbrio na seleção de casos | 0,120 | 0,001 | 0,10 | <span class="selo selo-aprovado">aprovado</span> |
+| Equilíbrio na qualidade do acerto | 0,115 | 0,085 | 0,10 | <span class="selo selo-aprovado">aprovado</span> |
 
-Os valores ficaram bem abaixo do limiar — cerca de um quarto do máximo tolerado.
-Na prática, isso significa que um débito de perfil semelhante recebe tratamento
-semelhante, independentemente da região da cidade em que está.
+**Sem ajuste, o sistema passou do limite.** Ele tendia a pôr à frente da fila
+os débitos de setores de renda alta e a reconhecer menos os débitos
+recuperáveis dos setores de renda baixa. O motivo é que características como o
+valor do imóvel e a distância ao centro acompanham a renda da região, mesmo sem
+a renda ser informada ao sistema.
+
+**O ajuste corrige isso de forma transparente.** Cada faixa de renda recebe seu
+próprio ponto de corte, escolhido para que a proporção de casos selecionados
+seja a mesma nas três. Os pontos de corte são números publicados e
+verificáveis, e a auditoria precisa ser repetida a cada atualização do sistema.
 
 ### Um achado que vale registrar
 
@@ -70,9 +77,10 @@ frequente onde a renda é menor, e qualquer sistema honesto reflete isso. O
 problema não está no cálculo: está em usar esse resultado para direcionar
 fiscalização.
 
-A segunda pergunta produziu um sistema equilibrado, porque a chance de recuperar
-uma dívida depende muito mais do tempo de inscrição e do histórico de
-parcelamento do que da renda da região.
+A segunda pergunta produziu um sistema muito menos desequilibrado, porque a
+chance de recuperar uma dívida depende sobretudo do tempo de inscrição. O
+desequilíbrio que restou, no sentido oposto, é o que o ajuste por região
+corrige.
 
 **A decisão de projeto foi adotar apenas a segunda.** O sistema em operação
 responde a "de quem se recupera", nunca a "quem vai dever". A primeira análise

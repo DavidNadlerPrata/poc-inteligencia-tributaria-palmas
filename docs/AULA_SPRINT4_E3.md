@@ -166,8 +166,8 @@ a exclusão vier depois do split, eles já estarão dentro do conjunto de treino
 e nenhuma mensagem de erro vai avisar. Daqui em diante, **toda a trilha parte de
 `universo`**, nunca de `dados`.
 
-Nesta carteira saem 1.393 dos 20.000 registros, e o universo de trabalho
-fica com 18.607.
+Nesta carteira saem 1.320 dos 20.000 registros, e o universo de trabalho
+fica com 18.680.
 
 ### EDA orientada a decisão
 
@@ -191,10 +191,10 @@ Feche a seção com uma célula Markdown listando as decisões tomadas:
 
 > **Decisões que a EDA sustenta**
 >
-> 1. Os dois alvos estão equilibrados (50,7% de inadimplentes) → não
+> 1. Os dois alvos estão equilibrados (43,3% de inadimplentes) → não
 >    usaremos reamostragem nem `class_weight`.
-> 2. O Modelo 2 usa só os 15.361 registros com dívida inscrita.
-> 3. Os 1.393 beneficiários do IPTU Social saíram antes de qualquer treino.
+> 2. O Modelo 2 usa só os 8.041 registros com dívida inscrita.
+> 3. Os 1.320 beneficiários do IPTU Social saíram antes de qualquer treino.
 
 ---
 
@@ -240,8 +240,8 @@ recentes:
 
 | Conjunto | Tempo médio de inadimplência | Taxa de recuperação |
 |---|---|---|
-| treino (80% mais antigo) | 1.058 dias | 47,8% |
-| teste (20% mais recente) | 216 dias | 66,8% |
+| treino (80% mais antigo) | 1.419 dias | 37,6% |
+| teste (20% mais recente) | 292 dias | 64,4% |
 
 O corte temporal passou a separar **exatamente pelo preditor mais forte** do
 Modelo 2. O teste ficou só com dívidas recentes, cuja taxa de recuperação é
@@ -279,8 +279,8 @@ PoC — **esconder que você inventou, não é**.
 > sorteada, não existe deriva temporal nesta base: o passado e o futuro têm a
 > mesma distribuição, e o split temporal equivale, por construção, a um split
 > aleatório. Medimos: em 20 splits aleatórios do mesmo tamanho, o ROC-AUC de
-> teste variou de 0,692 a 0,723; o do split temporal,
-> 0,707, cai dentro dessa faixa. Ou seja, aqui você exercita a
+> teste variou de 0,785 a 0,814; o do split temporal,
+> 0,803, cai dentro dessa faixa. Ou seja, aqui você exercita a
 > **mecânica** correta — cortar por data, validar no futuro, provar a ausência
 > de vazamento —, mas não vai observar o efeito que ela protege. Com dados
 > reais, em que a economia e a política de cobrança mudam de um ano para outro,
@@ -306,7 +306,7 @@ print(f"teste:  {len(teste):5d} ({len(teste) / len(universo):.0%})"
       f" | de {teste['competencia'].min().date()}")
 ```
 
-Com esta base: 14.877 registros de treino (80%) e 3.730 de
+Com esta base: 14.936 registros de treino (80%) e 3.744 de
 teste (20%).
 
 ### 3.5 Provando que não há vazamento
@@ -334,9 +334,9 @@ Com o eixo de competência, a comparação fica assim — e é isso que você qu
 
 | Média | Treino | Teste |
 |---|---|---|
-| Valor venal (R$) | 293.925 | 291.649 |
-| Exercícios inadimplentes (5 anos) | 1,65 | 1,65 |
-| Taxa de inadimplência | 50,8% | 50,3% |
+| Valor venal (R$) | 177.635 | 173.908 |
+| Exercícios inadimplentes (5 anos) | 1,62 | 1,63 |
+| Taxa de inadimplência | 43,1% | 44,1% |
 
 Esses `assert` são o seu seguro na banca. Quando perguntarem sobre vazamento,
 você rola até a célula e mostra a verificação rodando.
@@ -489,28 +489,30 @@ Inclua o **classificador trivial**. Se o seu modelo sofisticado não superar
 "chutar sempre a classe majoritária", isso precisa aparecer no notebook — e é
 melhor você descobrir antes da banca.
 
-### Quando o classificador trivial parece ganhar
+### O que o classificador trivial ensina
 
 O placar desta base:
 
 | Modelo | ROC-AUC na validação | F1 na validação |
 |---|---|---|
-| trivial (maioria) | 0,5000 | 0,6718 |
-| regressão logística | 0,7119 | 0,6658 |
-| árvore de decisão | 0,6884 | 0,6506 |
+| trivial (maioria) | 0,5000 | 0,0000 |
+| regressão logística | 0,7998 | 0,7132 |
+| árvore de decisão | 0,7885 | 0,7113 |
 
-Leia de novo: **o classificador trivial tem o melhor F1**. Se você reportar só
-o F1, a conclusão é que nenhum modelo serviu — e ela estaria errada.
+O trivial prevê sempre a classe majoritária, e nesta base ela é **adimplente**:
+só 42,8% dos registros de validação são inadimplentes. Por isso ele
+**acerta 57,2% dos casos sem identificar um único inadimplente** —
+recall zero, F1 zero e ROC-AUC 0,500, porque dá a mesma previsão a todos.
 
-**Por que isso acontece.** O alvo está perto de 50%. Chutando sempre "1", o
-recall vira 1,0 e a precisão vira a própria prevalência (p), o que dá
-F1 = 2p / (p + 1) ≈ 0,67 sem aprender absolutamente nada. Já o ROC-AUC do
-trivial é 0,500: ele não ordena os casos, porque atribui a mesma previsão a
-todos.
+**A armadilha é a acurácia.** "O modelo acerta 76,7%" impressiona até
+alguém lembrar que não fazer nada acerta 57,2%. A acurácia sozinha não diz
+quanto o modelo aprendeu, e ela muda com a prevalência: numa carteira com 90%
+de adimplentes, o trivial acertaria 90%.
 
-**O que distingue os dois.** F1 depende do limiar escolhido; ROC-AUC não. Um
-modelo pode ordenar bem os casos (ROC-AUC alto) e ainda assim ter F1 ruim porque
-o corte em 0,5 está no lugar errado. Para ver isso, precisamos das
+**O F1 também depende de uma escolha.** Ele é calculado depois de cortar as
+probabilidades num limiar, e o padrão da biblioteca é 0,5. O ROC-AUC não
+depende de limiar: mede se o modelo põe os inadimplentes à frente dos
+adimplentes na ordenação. Para ver o efeito do limiar, precisamos das
 probabilidades que o modelo atribui aos registros de validação:
 
 ```python
@@ -541,15 +543,17 @@ O F1 da regressão logística em vários limiares, na validação:
 
 | Limiar | F1 | Precisão | Recall |
 |---|---|---|---|
-| 0,35 | 0,6955 | 0,571 | 0,889 |
-| 0,40 | 0,6939 | 0,597 | 0,827 |
-| 0,45 | 0,6868 | 0,622 | 0,767 |
-| 0,50 | 0,6659 | 0,655 | 0,678 |
-| 0,55 | 0,6312 | 0,685 | 0,585 |
+| 0,35 | 0,7204 | 0,724 | 0,717 |
+| 0,40 | 0,7204 | 0,737 | 0,704 |
+| 0,45 | 0,7174 | 0,749 | 0,688 |
+| 0,50 | 0,7132 | 0,755 | 0,676 |
+| 0,55 | 0,7018 | 0,766 | 0,647 |
 
-Com o limiar em 0,37 o F1 chega a 0,6956 e supera o trivial
-(0,6719 nos mesmos registros). O modelo sempre foi melhor — o limiar
-padrão é que escondia isso.
+Nesta base o F1 muda pouco: 0,7132 no limiar 0,5 e 0,7219 no melhor
+limiar (0,38). O que muda bastante é a troca entre precisão e recall —
+e é por ela que o limiar se escolhe (seção 7). Em outra base, com outra
+prevalência, o corte em 0,5 pode esconder um modelo bom; por isso a comparação
+entre modelos não deve depender dele.
 
 **Três conclusões para o notebook:**
 
@@ -557,9 +561,9 @@ padrão é que escondia isso.
    avaliar uma configuração de decisão específica.
 2. **O limiar é uma decisão de projeto**, não uma constante da biblioteca
    (seção 7).
-3. **Reporte o trivial mesmo quando ele parece ganhar**, com a explicação acima.
-   Mostrar que você entende por que o F1 dele é alto vale mais que esconder a
-   linha.
+3. **Reporte a acurácia do trivial ao lado da sua.** É ela que mostra quanto o
+   modelo acrescenta: nesta base, a regressão logística acerta 76,7%
+   dos casos de validação no limiar 0,5, contra 57,2% do trivial.
 
 ---
 
@@ -614,13 +618,13 @@ print(placar_final)
 
 | Modelo | ROC-AUC na validação |
 |---|---|
-| regressão logística | 0,7119 |
-| random forest (tunado) | 0,7064 |
-| árvore de decisão | 0,6884 |
+| regressão logística | 0,7998 |
+| random forest (tunado) | 0,7980 |
+| árvore de decisão | 0,7885 |
 | trivial (maioria) | 0,5000 |
 
 **A regressão logística vence o Random Forest tunado.** A diferença é pequena
-(0,005 de ROC-AUC) — menor que a oscilação por sorteio medida na seção 3.3,
+(0,002 de ROC-AUC) — menor que a oscilação por sorteio medida na seção 3.3,
 portanto um empate técnico. Por isso a regra de decisão precisa ser fixada
 antes de olhar o resultado, e a nossa é: *vence o maior ROC-AUC na validação; em empate
 técnico, vence o modelo mais simples*. Pelas duas cláusulas, o escolhido é a
@@ -635,8 +639,8 @@ Isso não é um fracasso do trabalho — é um resultado. Escreva-o assim:
 
 > **Justificativa da escolha.** Comparamos quatro candidatos na validação
 > temporal. O Random Forest, tunado em quatro combinações de profundidade e
-> tamanho mínimo de folha, atingiu ROC-AUC de 0,706; a regressão logística,
-> 0,712. Escolhemos a regressão logística: tem o melhor desempenho de
+> tamanho mínimo de folha, atingiu ROC-AUC de 0,798; a regressão logística,
+> 0,800. Escolhemos a regressão logística: tem o melhor desempenho de
 > validação, é o modelo mais simples e seus coeficientes são diretamente
 > interpretáveis, o que sustenta o direito à explicação do Art. 20 da LGPD. O
 > resultado é coerente com a natureza dos dados: a carteira sintética foi
@@ -685,14 +689,14 @@ não ser. Diga o que cada erro custa e mostre a troca em casos:
 > em dia sinalizado indevidamente. Como este modelo tem uso diagnóstico —
 > dimensionar a inadimplência esperada e orientar ações de educação fiscal, não
 > cobrança —, o alarme falso custa pouco, e privilegiamos o recall. Com o limiar
-> em 0,37, escolhido na validação, o recall sobe de 0,678 para
-> 0,869: 1.152 inadimplentes a mais identificados
-> (4.079 → 5.231), ao preço de 1.638 alarmes falsos
-> adicionais (2.152 → 3.790). Se o modelo fosse usado para
+> em 0,38, escolhido na validação, o recall sobe de 0,676 para
+> 0,710: 176 inadimplentes a mais identificados
+> (3.456 → 3.632), ao preço de 196 alarmes falsos
+> adicionais (1.122 → 1.318). Se o modelo fosse usado para
 > direcionar cobrança, esse custo seria inaceitável e a escolha seria outra.
 
-> **Reporte a troca em casos, dos dois lados.** "O recall subiu 0,19" não
-> significa nada para a Sefin; "1.152 inadimplentes a mais, com 1.638 alarmes
+> **Reporte a troca em casos, dos dois lados.** "O recall subiu 0,03" não
+> significa nada para a Sefin; "176 inadimplentes a mais, com 196 alarmes
 > falsos a mais" significa. E nunca cite só o ganho: o custo é metade da
 > decisão.
 
@@ -726,13 +730,13 @@ Resultado no teste:
 
 | Métrica | Valor |
 |---|---|
-| Acurácia | 0,620 |
-| Precisão | 0,585 |
-| Recall | 0,843 |
-| F1 | 0,691 |
-| ROC-AUC | 0,707 |
+| Acurácia | 0,771 |
+| Precisão | 0,754 |
+| Recall | 0,713 |
+| F1 | 0,733 |
+| ROC-AUC | 0,803 |
 
-Matriz de confusão `[[VN, FP], [FN, VP]]` = `[[731, 1121], [295, 1583]]`
+Matriz de confusão `[[VN, FP], [FN, VP]]` = `[[1708, 384], [474, 1178]]`
 
 Se o resultado do teste decepcionar, **não volte para ajustar nada**. No momento
 em que você altera o modelo por causa do teste, ele deixa de ser teste. Reporte
@@ -744,19 +748,19 @@ A rubrica diz *"métricas completas e interpretadas"*. Uma tabela de números se
 leitura não cumpre o critério. Para cada métrica, diga o que ela significa **no
 problema**:
 
-> A matriz de confusão mostra 295 falsos negativos: contribuintes que ficarão
-> inadimplentes e que o modelo não antecipa. Os 1.121 falsos positivos são
+> A matriz de confusão mostra 474 falsos negativos: contribuintes que ficarão
+> inadimplentes e que o modelo não antecipa. Os 384 falsos positivos são
 > contribuintes em dia sinalizados indevidamente — aceitável num uso
-> diagnóstico, inaceitável se a saída acionasse cobrança. O ROC-AUC de 0,707
-> no teste ficou próximo do obtido na validação (0,712), o que indica que a
+> diagnóstico, inaceitável se a saída acionasse cobrança. O ROC-AUC de 0,803
+> no teste ficou próximo do obtido na validação (0,800), o que indica que a
 > estimativa de validação era confiável.
 
-E seja honesto com números modestos:
+E seja honesto sobre o que o número significa:
 
-> ROC-AUC de 0,707 indica desempenho moderado: o modelo é claramente melhor que
-> o acaso e erra com frequência. Isso é esperado, já que o processo gerador
-> embute ruído deliberado. Valores próximos de 1,0 aqui indicariam vazamento,
-> não qualidade.
+> ROC-AUC de 0,803: o modelo é claramente melhor que o acaso e ainda erra com
+> frequência — a matriz de confusão acima mostra quanto. Parte do erro é
+> esperada, já que o processo gerador embute ruído deliberado. Valores
+> próximos de 1,0 aqui indicariam vazamento, não qualidade.
 
 ### Métricas por subgrupo — guarde isto para a Sprint 5
 
@@ -799,12 +803,12 @@ por_renda.to_csv(DADOS / "metricas_por_subgrupo_inadimplencia.csv", sep=";", ind
 
 | Faixa de renda do setor | n | Prevalência real | Taxa de seleção | Recall | Precisão |
 |---|---|---|---|---|---|
-| alta | 812 | 39,7% | 41,8% | 0,543 | 0,516 |
-| media | 1.346 | 45,5% | 71,5% | 0,856 | 0,545 |
-| baixa | 1.572 | 60,0% | 89,2% | 0,936 | 0,630 |
+| alta | 782 | 30,9% | 26,1% | 0,550 | 0,652 |
+| media | 1.362 | 39,9% | 38,1% | 0,689 | 0,723 |
+| baixa | 1.600 | 54,1% | 52,4% | 0,774 | 0,799 |
 
-Olhe a coluna `taxa_selecao`: o modelo sinaliza 89% dos contribuintes
-de setores de renda baixa e 42% dos de renda alta — mesmo sem a faixa de
+Olhe a coluna `taxa_selecao`: o modelo sinaliza 52% dos contribuintes
+de setores de renda baixa e 26% dos de renda alta — mesmo sem a faixa de
 renda entre os atributos. Nesta sprint você **mede e guarda**; a análise e a
 mitigação são assunto da Sprint 5. Mas registre desde já: é por causa desse
 número que o Modelo 1 fica restrito a uso diagnóstico.
@@ -849,9 +853,9 @@ print(placar_rec_final)
 
 | Modelo | ROC-AUC na validação |
 |---|---|
-| regressão logística | 0,6717 |
-| random forest (tunado) | 0,6595 |
-| árvore de decisão | 0,6404 |
+| regressão logística | 0,7226 |
+| random forest (tunado) | 0,7151 |
+| árvore de decisão | 0,6872 |
 | trivial (maioria) | 0,5000 |
 
 De novo a regressão logística vence, pelo mesmo motivo. Ajuste final e
@@ -867,7 +871,7 @@ metricas_recuperabilidade = avaliar(yr_teste, prob_rec, 0.5)
 print(f"ROC-AUC no teste: {metricas_recuperabilidade['roc_auc']:.4f}")
 ```
 
-O ROC-AUC no teste é 0,684.
+O ROC-AUC no teste é 0,691.
 
 ### Um score não tem limiar: tem faixas e ordenação
 
@@ -917,19 +921,20 @@ fila.to_csv(DADOS / "avaliacao_teste_recuperabilidade.csv", sep=";", index=False
 
 | Faixa | Casos | Probabilidade média prevista | Taxa de recuperação observada |
 |---|---|---|---|
-| alta | 541 | 70,9% | 73,0% |
-| media | 2.081 | 52,2% | 54,6% |
-| baixa | 450 | 21,9% | 22,7% |
+| alta | 157 | 72,0% | 65,0% |
+| media | 968 | 50,0% | 53,0% |
+| baixa | 486 | 19,8% | 21,8% |
 
-Leia a tabela assim: na faixa alta o modelo previu em média 71% e
-73% das dívidas foram de fato recuperadas; na baixa, previu
-22% e observou 23%. As faixas estão na ordem certa e
-os números previstos acompanham os observados — é isso que autoriza usar a
+Leia a tabela assim: na faixa alta o modelo previu em média 72% e
+65% das dívidas foram de fato recuperadas; na baixa, previu
+20% e observou 22%. As faixas estão na ordem certa e
+os números previstos acompanham os observados (a maior diferença é de
+7 pontos percentuais, na faixa alta) — é isso que autoriza usar a
 probabilidade no cálculo do retorno esperado. Se a faixa "alta" mostrasse taxa
 observada parecida com a "média", o score não estaria separando nada, por
 melhor que fosse o ROC-AUC.
 
-Note também o tamanho das faixas: 68% das dívidas caem na faixa média.
+Note também o tamanho das faixas: 60% das dívidas caem na faixa média.
 O score separa bem os extremos e é honesto sobre o meio — não force faixas mais
 "decididas" do que os dados permitem.
 

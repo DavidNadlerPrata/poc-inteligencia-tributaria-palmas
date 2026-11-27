@@ -32,31 +32,36 @@ encontrar na Sprint 2.
 ## O achado central
 
 <div class="destaque">
-<h3>Dois modelos, mesmos dados, comportamentos éticos opostos</h3>
+<h3>Dois modelos, mesmos dados, vieses em sentidos opostos</h3>
 
 <p>Treinamos dois classificadores sobre a mesma base, com o mesmo algoritmo e os
-mesmos atributos. Um reprovou nos dois testes de justiça algorítmica; o outro
-passou com folga. A diferença não está na técnica — está na <strong>pergunta</strong>.</p>
+mesmos atributos. Os dois reprovaram nos testes de justiça algorítmica, mas com
+intensidades e sentidos diferentes. A diferença está na <strong>pergunta</strong>.</p>
 
 <p>Perguntar <em>"quem provavelmente vai dever?"</em> produz um modelo que aprende sobre
-pobreza: morador de setor de renda baixa tem <strong>3,3 vezes</strong> mais chance de ser
+pobreza: morador de setor de renda baixa tem <strong>2,6 vezes</strong> mais chance de ser
 sinalizado. Perguntar <em>"de quem se consegue recuperar?"</em> produz um modelo que
-aprende sobre processo de cobrança — o tempo desde a inscrição da dívida pesa
-cinco vezes mais que qualquer característica do contribuinte.</p>
+aprende sobretudo sobre o processo de cobrança — o tempo desde a inscrição da
+dívida é, de longe, o atributo mais importante —, mas que ainda carrega a renda
+por substitutos como valor venal e distância ao centro, e favorece os setores
+ricos.</p>
 
-<p><strong>A escolha da variável-alvo é uma decisão ética, tomada antes da primeira linha
-de código de modelagem.</strong></p>
+<p><strong>A escolha da variável-alvo reduz o viés, mas não o elimina.</strong> O que
+torna o segundo modelo utilizável é a pergunta certa somada a uma mitigação
+explícita e auditável.</p>
 </div>
 
 | Modelo | Paridade Demográfica | Igualdade de Oportunidade | Resultado |
 |---|---|---|---|
-| 1 — inadimplência | 0,4745 | 0,4757 | <span class="selo selo-reprovado">reprovado</span> |
-| 2 — recuperabilidade | 0,0475 | 0,0412 | <span class="selo selo-aprovado">aprovado</span> |
+| 1 — inadimplência | 0,3322 | 0,3251 | <span class="selo selo-reprovado">reprovado</span> |
+| 2 — recuperabilidade | 0,1203 | 0,1150 | <span class="selo selo-reprovado">reprovado</span> |
+| 2, com limiar calibrado por grupo | 0,0008 | 0,085 | <span class="selo selo-aprovado">aprovado</span> |
 
 O limiar adotado é 0,10, seguindo Barocas, Hardt e Narayanan (2023). A
-consequência prática é direta: **apenas o Modelo 2 ordena a fila de cobrança**.
-O Modelo 1 fica restrito a uso diagnóstico — dimensionar o problema, planejar
-educação fiscal, subsidiar política pública.
+consequência prática é direta: **apenas o Modelo 2 ordena a fila de cobrança, e
+só com o limiar calibrado por grupo**. O Modelo 1 fica restrito a uso
+diagnóstico — dimensionar o problema, planejar educação fiscal, subsidiar
+política pública.
 
 A discussão completa, incluindo a impossibilidade matemática de satisfazer
 paridade e calibração ao mesmo tempo, está no
@@ -68,24 +73,28 @@ paridade e calibração ao mesmo tempo, está no
 
 <div class="cartoes">
 <div class="cartao"><div class="valor">17.507</div><div class="rotulo">registros reais coletados da API da Prefeitura</div></div>
-<div class="cartao"><div class="valor">50,5%</div><div class="rotulo">do retorno esperado concentrado nos 20% melhores casos</div></div>
-<div class="cartao"><div class="valor">97</div><div class="rotulo">testes automatizados, 90% de cobertura</div></div>
-<div class="cartao"><div class="valor">0,0006</div><div class="rotulo">disparidade após mitigação (era 0,0475)</div></div>
+<div class="cartao"><div class="valor">54,9%</div><div class="rotulo">do retorno esperado concentrado nos 20% melhores casos</div></div>
+<div class="cartao"><div class="valor">196</div><div class="rotulo">testes automatizados, 94% de cobertura</div></div>
+<div class="cartao"><div class="valor">0,0008</div><div class="rotulo">disparidade após mitigação (era 0,1203)</div></div>
 </div>
 
 ### Desempenho dos modelos
 
 | | Modelo 1 — inadimplência | Modelo 2 — recuperabilidade |
 |---|---|---|
-| Acurácia | 0,652 | 0,620 |
-| Precisão | 0,664 | 0,616 |
-| Recall | 0,634 | 0,698 |
-| F1 | 0,649 | 0,654 |
-| ROC-AUC | 0,702 | 0,666 |
+| Acurácia | 0,768 | 0,637 |
+| Precisão | 0,756 | 0,583 |
+| Recall | 0,685 | 0,540 |
+| F1 | 0,719 | 0,561 |
+| ROC-AUC | 0,804 | 0,686 |
 
-Desempenho moderado é o resultado honesto: o processo gerador embute ruído
-deliberado. Métricas próximas de 1,0 num PoC como este indicariam vazamento de
-dados, não qualidade.
+O processo gerador embute ruído deliberado; métricas próximas de 1,0 num PoC
+como este indicariam vazamento de dados, não qualidade.
+
+A carteira é sintética e calibrada por números publicados. A proporção de
+imóveis com dívida (44%) é uma **hipótese** baseada na inadimplência medida em
+2018, porque a Sefin não publica esse número — detalhes no
+[Model Card](model-card.html#5-dados-de-treinamento).
 
 ### Priorização da cobrança
 

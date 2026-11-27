@@ -22,7 +22,7 @@ O sistema é composto por **dois modelos** que respondem a perguntas diferentes.
 | **Algoritmo** | `HistGradientBoostingClassifier` | `HistGradientBoostingClassifier` |
 | **Framework** | scikit-learn 1.9 | scikit-learn 1.9 |
 | **Hiperparâmetros** | `max_iter=250`, `learning_rate=0.08`, `max_depth=6` | idem |
-| **Universo de treino** | 18.607 imóveis (após exclusão do IPTU Social) | 15.361 imóveis com dívida inscrita |
+| **Universo de treino** | 18.680 imóveis (após exclusão do IPTU Social) | 8.041 imóveis com dívida inscrita |
 | **Versão** | 0.1.0 (PoC) | 0.1.0 (PoC) |
 | **Licença** | Acadêmica — uso restrito a ensino e pesquisa | idem |
 
@@ -82,32 +82,33 @@ correlacionados com renda), mas impede a discriminação direta e explícita.
 
 Conjunto de teste: 25% dos dados, separação estratificada, `random_state=42`.
 
-### Modelo 1 — inadimplência (n = 4.652)
+### Modelo 1 — inadimplência (n = 4.670)
 
 | Métrica | Valor |
 |---|---|
-| Acurácia | 0,652 |
-| Precisão | 0,664 |
-| Recall | 0,634 |
-| F1-score | 0,649 |
-| ROC-AUC | 0,702 |
+| Acurácia | 0,768 |
+| Precisão | 0,756 |
+| Recall | 0,685 |
+| F1-score | 0,719 |
+| ROC-AUC | 0,804 |
 
-Matriz de confusão `[[VN, FP], [FN, VP]]` = `[[1537, 756], [863, 1496]]`
+Matriz de confusão `[[VN, FP], [FN, VP]]` = `[[2200, 447], [638, 1385]]`
 
-### Modelo 2 — recuperabilidade (n = 3.841)
+### Modelo 2 — recuperabilidade (n = 2.011)
 
 | Métrica | Valor |
 |---|---|
-| Acurácia | 0,620 |
-| Precisão | 0,616 |
-| Recall | 0,698 |
-| F1-score | 0,654 |
-| ROC-AUC | 0,666 |
+| Acurácia | 0,637 |
+| Precisão | 0,583 |
+| Recall | 0,540 |
+| F1-score | 0,561 |
+| ROC-AUC | 0,686 |
 
-Matriz de confusão `[[VN, FP], [FN, VP]]` = `[[998, 863], [598, 1382]]`
+Matriz de confusão `[[VN, FP], [FN, VP]]` = `[[815, 333], [397, 466]]`
 
-**Leitura honesta destes números.** ROC-AUC entre 0,67 e 0,70 é desempenho
-moderado: o modelo é claramente melhor que o acaso, mas erra com frequência.
+**Leitura honesta destes números.** ROC-AUC de 0,80 (Modelo 1) e 0,69
+(Modelo 2): os dois são claramente melhores que o acaso, e o Modelo 2 — o que
+ordena a fila — ainda erra com frequência.
 Isso é esperado e desejável num PoC cujo processo gerador embute ruído
 deliberado. Métricas próximas de 1,0 aqui indicariam vazamento de dados, não
 qualidade. Em produção, com histórico real de pagamentos, espera-se desempenho
@@ -116,8 +117,11 @@ como veredito, permanece válida em qualquer nível de acurácia.
 
 **Métrica que mais importa.** Para o Modelo 2, o custo dos erros é assimétrico:
 um falso positivo gasta uma diligência à toa; um falso negativo abandona
-dinheiro recuperável. Por isso o limiar foi mantido em 0,5 privilegiando
-**recall** (0,698) sobre precisão (0,616).
+dinheiro recuperável. Com o limiar padrão de 0,5, o recall é de **0,540**:
+quase metade das dívidas recuperáveis fica abaixo do corte. O pipeline de
+demonstração mantém 0,5; num uso real, o limiar deve ser escolhido na validação
+pelo custo de cada erro, como mostra a aula da Sprint 4. A fila de cobrança não
+depende do limiar — ela ordena pela probabilidade contínua.
 
 ---
 
@@ -128,10 +132,21 @@ dinheiro recuperável. Por isso o limiar foi mantido em 0,5 privilegiando
 | API REST da Prefeitura de Palmas (`sgreceitas/listar`) | **Real** — 17.507 registros de arrecadação de 2025 | Contexto agregado, calibração |
 | Carteira de contribuintes (`src/sintetico.py`) | **Sintética** — 20.000 imóveis | Treino e avaliação |
 
-**Calibração.** Os valores monetários são reescalados para que a dívida ativa da
-amostra seja proporcional aos R$ 363 milhões de IPTU inscritos em dívida ativa
-(Sefin), na razão entre os 20.000 imóveis da amostra e os 111.252 imóveis
-tributáveis do município.
+**Calibração.** Três números publicados ancoram a carteira:
+
+| Grandeza | Na carteira | Referência |
+|---|---|---|
+| Dívida ativa de IPTU | R$ 65,3 mi | R$ 363 mi (Sefin), na razão entre os 20.000 imóveis da amostra e os 111.252 tributáveis |
+| Imóveis com dívida inscrita | 43,8% | **Hipótese**: 44%, a inadimplência no IPTU de Palmas medida em 2018 (TV Anhanguera). A Sefin não publica o número de devedores |
+| Inadimplência no próximo exercício | 44,0% | A mesma medição de 2018. A meta oficial de 67% de adimplência em 2026 indica patamar acima de 33% |
+
+Para fechar o total de R$ 363 mi, só a dívida é reescalada: o fator, cerca de
+2,2 vezes o IPTU dos exercícios em aberto, representa multa, juros, correção e
+débitos anteriores à janela de cinco anos. Valor venal e IPTU não são alterados:
+o IPTU médio da carteira, R$ 1.019, é compatível com a arrecadação de 2026
+(R$ 43 mi pagos à vista por 51.421 contribuintes até março). Os parâmetros
+ficam em `config.py`; com o número real de devedores da Sefin, o gerador se
+recalibra sozinho.
 
 **Sub-representação conhecida.** Imóveis irregulares ou não cadastrados —
 concentrados em ocupações informais — estão ausentes por construção, assim como
@@ -139,11 +154,11 @@ estariam num cadastro real. O modelo não enxerga essa população.
 
 **Distribuição da carteira:**
 
-| Faixa de renda do setor | Imóveis | Taxa de inadimplência | Dívida média |
-|---|---|---|---|
-| baixa | 9.204 | 59,6% | R$ 2.389,95 |
-| média | 6.841 | 47,4% | R$ 3.536,09 |
-| alta | 3.955 | 37,8% | R$ 4.821,70 |
+| Faixa de renda do setor | Imóveis | Com dívida inscrita | Taxa de inadimplência | Dívida média por devedor |
+|---|---|---|---|---|
+| baixa | 9.204 | 53,6% | 54,5% | R$ 5.373,72 |
+| média | 6.841 | 39,8% | 38,7% | R$ 8.730,26 |
+| alta | 3.955 | 27,7% | 28,9% | R$ 13.671,14 |
 
 Note a tensão que estrutura todo o problema ético: setores de renda baixa
 concentram **mais casos** de inadimplência, mas setores de renda alta concentram
@@ -161,37 +176,43 @@ adotado: 0,10 (Barocas, Hardt e Narayanan, 2023). Detalhamento completo no
 
 | Grupo | n | Prevalência real | Taxa de seleção | Recall (TPR) |
 |---|---|---|---|---|
-| alta | 1.028 | 0,367 | 0,203 | 0,310 |
-| média | 1.647 | 0,477 | 0,427 | 0,559 |
-| baixa | 1.977 | 0,605 | 0,678 | 0,786 |
+| alta | 1.030 | 0,293 | 0,203 | 0,450 |
+| média | 1.674 | 0,376 | 0,341 | 0,640 |
+| baixa | 1.966 | 0,555 | 0,535 | 0,775 |
 
-- Paridade Demográfica: **0,4745** (limiar 0,10) — reprovado
-- Igualdade de Oportunidade: **0,4757** (limiar 0,10) — reprovado
+- Paridade Demográfica: **0,3322** (limiar 0,10) — reprovado
+- Igualdade de Oportunidade: **0,3251** (limiar 0,10) — reprovado
 
-### Modelo 2 — recuperabilidade: **aprovado**
+### Modelo 2 — recuperabilidade: **reprovado, com viés no sentido oposto**
 
 | Grupo | n | Prevalência real | Taxa de seleção | Recall (TPR) |
 |---|---|---|---|---|
-| alta | 704 | 0,548 | 0,619 | 0,723 |
-| média | 1.362 | 0,499 | 0,583 | 0,706 |
-| baixa | 1.775 | 0,515 | 0,572 | 0,682 |
+| alta | 256 | 0,484 | 0,500 | 0,629 |
+| média | 691 | 0,450 | 0,386 | 0,540 |
+| baixa | 1.064 | 0,402 | 0,380 | 0,514 |
 
-- Paridade Demográfica: **0,0475** — aprovado
-- Igualdade de Oportunidade: **0,0412** — aprovado
+- Paridade Demográfica: **0,1203** (limiar 0,10) — reprovado
+- Igualdade de Oportunidade: **0,1150** (limiar 0,10) — reprovado
+- Com limiar calibrado por grupo (`src/fairness.py::simular_mitigacao`), a
+  disparidade na taxa de seleção cai para **0,0008**.
 
-**O achado central.** O modelo que prediz *quem deve* é fortemente enviesado; o
-modelo que prediz *de quem se recupera* é razoavelmente equilibrado. A diferença
-não é acidente de modelagem: a inadimplência tem prevalência real muito diferente
-entre grupos (0,367 contra 0,605), então qualquer classificador calibrado
-reproduz essa diferença. A recuperabilidade, ao contrário, tem prevalência
-parecida em todos os grupos (0,50 a 0,55) — recuperar dívida depende mais do
-tempo de inscrição e do histórico de parcelamento do que da renda do setor.
+**O achado central.** Os dois modelos são enviesados, em sentidos opostos e com
+intensidades muito diferentes. O que prediz *quem deve* sinaliza 53,5% dos
+setores de renda baixa contra 20,3% dos de renda alta — reflexo direto da
+prevalência real (0,555 contra 0,293), que qualquer classificador calibrado
+reproduz. O que prediz *de quem se recupera* favorece os setores de renda alta
+(50,0% contra 38,0%) e reconhece menos as dívidas recuperáveis dos setores
+pobres (recall de 0,514 contra 0,629). Esse viés é menor, mas passa do limiar:
+a recuperação também difere entre grupos (0,484 contra 0,402), e entre os
+atributos mais importantes estão valor venal e distância ao centro, que
+funcionam como substitutos da renda.
 
 **Consequência prática, e é a recomendação mais importante deste documento:** o
 Modelo 1 **não deve ser usado para direcionar cobrança**. Seu uso legítimo é
 diagnóstico — dimensionar o problema, planejar campanhas de educação fiscal,
 identificar setores que precisam de política pública. Quem ordena a fila é o
-Modelo 2.
+Modelo 2, **e só com o limiar calibrado por grupo**: sem essa mitigação, ele
+também reprova na auditoria.
 
 ---
 

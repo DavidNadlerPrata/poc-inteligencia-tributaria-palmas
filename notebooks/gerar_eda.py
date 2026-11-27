@@ -434,7 +434,9 @@ md("""
 ---
 ## 4. O que prevê o quê
 
-Correlações entre atributos e os dois alvos candidatos.
+Correlações entre atributos e os dois alvos candidatos, cada um na sua
+população: a inadimplência em toda a carteira, a recuperação só entre quem tem
+dívida inscrita.
 """),
 
 code("""
@@ -444,12 +446,16 @@ numericas = ["area_construida_m2", "valor_venal", "valor_iptu_anual",
              "qtd_parcelamentos_anteriores", "parcelamento_rompido",
              "qtd_notificacoes"]
 
-alvos = ["inadimplente_proximo_exercicio", "divida_recuperada_12m"]
-correlacoes = dados[numericas + alvos].corr()[alvos].drop(index=alvos)
+def correlacao_com(base, alvo):
+    return base[numericas + [alvo]].corr()[alvo].drop(alvo)
 
-comparativo = correlacoes.rename(columns={
-    "inadimplente_proximo_exercicio": "inadimplência",
-    "divida_recuperada_12m": "recuperação"}).round(3)
+# A recuperacao so existe para quem tem divida. Correlacionar na carteira
+# inteira mediria "ter divida" (quem nao deve entra com recuperacao zero), e
+# nao "recuperar". Por isso cada alvo e medido na sua propria populacao.
+comparativo = pd.DataFrame({
+    "inadimplência": correlacao_com(dados, "inadimplente_proximo_exercicio"),
+    "recuperação": correlacao_com(com_divida, "divida_recuperada_12m"),
+}).round(3)
 comparativo.reindex(comparativo["inadimplência"].abs().sort_values(ascending=False).index)
 """),
 

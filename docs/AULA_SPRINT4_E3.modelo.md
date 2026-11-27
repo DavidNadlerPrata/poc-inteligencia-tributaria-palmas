@@ -485,24 +485,26 @@ Inclua o **classificador trivial**. Se o seu modelo sofisticado não superar
 "chutar sempre a classe majoritária", isso precisa aparecer no notebook — e é
 melhor você descobrir antes da banca.
 
-### Quando o classificador trivial parece ganhar
+### O que o classificador trivial ensina
 
 O placar desta base:
 
 ⟦tabela_placar_baselines⟧
 
-Leia de novo: **o classificador trivial tem o melhor F1**. Se você reportar só
-o F1, a conclusão é que nenhum modelo serviu — e ela estaria errada.
+O trivial prevê sempre a classe majoritária, e nesta base ela é **adimplente**:
+só ⟦prev_val⟧ dos registros de validação são inadimplentes. Por isso ele
+**acerta ⟦acc_trivial⟧ dos casos sem identificar um único inadimplente** —
+recall zero, F1 zero e ROC-AUC 0,500, porque dá a mesma previsão a todos.
 
-**Por que isso acontece.** O alvo está perto de 50%. Chutando sempre "1", o
-recall vira 1,0 e a precisão vira a própria prevalência (p), o que dá
-F1 = 2p / (p + 1) ≈ 0,67 sem aprender absolutamente nada. Já o ROC-AUC do
-trivial é 0,500: ele não ordena os casos, porque atribui a mesma previsão a
-todos.
+**A armadilha é a acurácia.** "O modelo acerta ⟦acc_modelo_50⟧" impressiona até
+alguém lembrar que não fazer nada acerta ⟦acc_trivial⟧. A acurácia sozinha não diz
+quanto o modelo aprendeu, e ela muda com a prevalência: numa carteira com 90%
+de adimplentes, o trivial acertaria 90%.
 
-**O que distingue os dois.** F1 depende do limiar escolhido; ROC-AUC não. Um
-modelo pode ordenar bem os casos (ROC-AUC alto) e ainda assim ter F1 ruim porque
-o corte em 0,5 está no lugar errado. Para ver isso, precisamos das
+**O F1 também depende de uma escolha.** Ele é calculado depois de cortar as
+probabilidades num limiar, e o padrão da biblioteca é 0,5. O ROC-AUC não
+depende de limiar: mede se o modelo põe os inadimplentes à frente dos
+adimplentes na ordenação. Para ver o efeito do limiar, precisamos das
 probabilidades que o modelo atribui aos registros de validação:
 
 ```python
@@ -533,9 +535,11 @@ O F1 da regressão logística em vários limiares, na validação:
 
 ⟦tabela_limiares⟧
 
-Com o limiar em ⟦lim_melhor⟧ o F1 chega a ⟦f1_melhor⟧ e supera o trivial
-(⟦f1_trivial_val⟧ nos mesmos registros). O modelo sempre foi melhor — o limiar
-padrão é que escondia isso.
+Nesta base o F1 muda pouco: ⟦f1_50⟧ no limiar 0,5 e ⟦f1_melhor⟧ no melhor
+limiar (⟦lim_melhor⟧). O que muda bastante é a troca entre precisão e recall —
+e é por ela que o limiar se escolhe (seção 7). Em outra base, com outra
+prevalência, o corte em 0,5 pode esconder um modelo bom; por isso a comparação
+entre modelos não deve depender dele.
 
 **Três conclusões para o notebook:**
 
@@ -543,9 +547,9 @@ padrão é que escondia isso.
    avaliar uma configuração de decisão específica.
 2. **O limiar é uma decisão de projeto**, não uma constante da biblioteca
    (seção 7).
-3. **Reporte o trivial mesmo quando ele parece ganhar**, com a explicação acima.
-   Mostrar que você entende por que o F1 dele é alto vale mais que esconder a
-   linha.
+3. **Reporte a acurácia do trivial ao lado da sua.** É ela que mostra quanto o
+   modelo acrescenta: nesta base, a regressão logística acerta ⟦acc_modelo_50⟧
+   dos casos de validação no limiar 0,5, contra ⟦acc_trivial⟧ do trivial.
 
 ---
 
@@ -732,12 +736,12 @@ problema**:
 > no teste ficou próximo do obtido na validação (⟦log_auc⟧), o que indica que a
 > estimativa de validação era confiável.
 
-E seja honesto com números modestos:
+E seja honesto sobre o que o número significa:
 
-> ROC-AUC de ⟦t_auc⟧ indica desempenho moderado: o modelo é claramente melhor que
-> o acaso e erra com frequência. Isso é esperado, já que o processo gerador
-> embute ruído deliberado. Valores próximos de 1,0 aqui indicariam vazamento,
-> não qualidade.
+> ROC-AUC de ⟦t_auc⟧: o modelo é claramente melhor que o acaso e ainda erra com
+> frequência — a matriz de confusão acima mostra quanto. Parte do erro é
+> esperada, já que o processo gerador embute ruído deliberado. Valores
+> próximos de 1,0 aqui indicariam vazamento, não qualidade.
 
 ### Métricas por subgrupo — guarde isto para a Sprint 5
 
@@ -892,7 +896,8 @@ fila.to_csv(DADOS / "avaliacao_teste_recuperabilidade.csv", sep=";", index=False
 Leia a tabela assim: na faixa alta o modelo previu em média ⟦cal_alta_prev⟧ e
 ⟦cal_alta_obs⟧ das dívidas foram de fato recuperadas; na baixa, previu
 ⟦cal_baixa_prev⟧ e observou ⟦cal_baixa_obs⟧. As faixas estão na ordem certa e
-os números previstos acompanham os observados — é isso que autoriza usar a
+os números previstos acompanham os observados (a maior diferença é de
+⟦cal_max_dif⟧ pontos percentuais, na faixa ⟦cal_faixa_dif⟧) — é isso que autoriza usar a
 probabilidade no cálculo do retorno esperado. Se a faixa "alta" mostrasse taxa
 observada parecida com a "média", o score não estaria separando nada, por
 melhor que fosse o ROC-AUC.

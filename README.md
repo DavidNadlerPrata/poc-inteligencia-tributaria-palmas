@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/DavidNadlerPrata/poc-inteligencia-tributaria-palmas/actions/workflows/ci.yml/badge.svg)](https://github.com/DavidNadlerPrata/poc-inteligencia-tributaria-palmas/actions/workflows/ci.yml)
 [![Python](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-blue)](https://www.python.org/)
-[![Testes](https://img.shields.io/badge/testes-183-brightgreen)](tests/)
+[![Testes](https://img.shields.io/badge/testes-196-brightgreen)](tests/)
 [![Cobertura](https://img.shields.io/badge/cobertura-90%25-brightgreen)](tests/)
 
 ## Publicações
@@ -244,7 +244,7 @@ Toda pergunta, ferramenta chamada e resposta fica em
 | `app/tema.py` | Paleta validada e enxoval dos gráficos |
 | `notebooks/eda_sprint2.ipynb` | **Relatório de EDA da Sprint 2**, executado |
 | `notebooks/gerar_eda.py` | Script que gera o notebook (diff legível no Git) |
-| `tests/` | Suíte com 183 testes — `test_etica.py` é o mais importante |
+| `tests/` | Suíte com 196 testes — `test_etica.py` é o mais importante |
 | `data/carteira_contribuintes.csv` | **Carteira sintética versionada** — 20.000 registros, pronta para abrir |
 | `tests/fixtures/` | Amostra de dados reais para o CI rodar sem acessar a API |
 | `.github/workflows/ci.yml` | Integração contínua (GitHub Actions) |
@@ -265,38 +265,44 @@ Toda pergunta, ferramenta chamada e resposta fica em
 
 | | Modelo 1 — inadimplência | Modelo 2 — recuperabilidade |
 |---|---|---|
-| Acurácia | 0,652 | 0,620 |
-| Precisão | 0,664 | 0,616 |
-| Recall | 0,634 | 0,698 |
-| F1 | 0,649 | 0,654 |
-| ROC-AUC | 0,702 | 0,666 |
+| Acurácia | 0,768 | 0,637 |
+| Precisão | 0,756 | 0,583 |
+| Recall | 0,685 | 0,540 |
+| F1 | 0,719 | 0,561 |
+| ROC-AUC | 0,804 | 0,686 |
 
-Desempenho moderado é o resultado honesto: o processo gerador embute ruído
-deliberado. Métricas perto de 1,0 num PoC assim indicariam vazamento de dados.
+O processo gerador embute ruído deliberado; métricas perto de 1,0 num PoC assim
+indicariam vazamento de dados. O Modelo 2, que ordena a fila, é o mais difícil.
 
 ### Priorização
 
-- 15.361 contribuintes com dívida inscrita
-- Dívida na carteira: **R$ 62,8 milhões**
-- Retorno esperado: **R$ 29,5 milhões** (47,0%)
-- Os **20% melhores casos concentram 50,5%** do retorno esperado
+- 8.041 contribuintes com dívida inscrita na fila (43,8% da carteira tem dívida;
+  os beneficiários do IPTU Social ficam fora da fila)
+- Dívida na fila: **R$ 62,4 milhões**
+- Retorno esperado: **R$ 24,9 milhões** (39,9%)
+- Os **20% melhores casos concentram 54,9%** do retorno esperado
+
+A proporção de devedores é **hipótese**: 44%, a inadimplência no IPTU de Palmas
+medida em 2018. A Sefin não publica quantos imóveis têm dívida ativa. Fontes e
+escolhas da calibração no [Model Card](docs/MODEL_CARD.md), seção 5.
 
 ### Auditoria de justiça algorítmica
 
 | Modelo | Paridade Demográfica | Igualdade de Oportunidade | Resultado |
 |---|---|---|---|
-| 1 — inadimplência | 0,4745 | 0,4757 | **reprovado** |
-| 2 — recuperabilidade | 0,0475 | 0,0412 | aprovado |
+| 1 — inadimplência | 0,3322 | 0,3251 | **reprovado** (contra os setores pobres) |
+| 2 — recuperabilidade | 0,1203 | 0,1150 | **reprovado** (a favor dos setores ricos) |
+| 2, com limiar calibrado por grupo | 0,0008 | 0,085 | aprovado |
 
-Mitigação por limiar calibrado por grupo: disparidade **0,0475 → 0,0006**.
-
-**O achado central do PoC.** Dois modelos, mesmos dados, mesmo algoritmo,
-comportamentos éticos opostos. Perguntar *"quem provavelmente deve?"* produz um
-modelo que aprende sobre pobreza — morador de setor pobre tem 3,3× mais chance
-de ser sinalizado. Perguntar *"de quem se consegue recuperar?"* produz um modelo
-que aprende sobre processo de cobrança, e passa nos dois testes. **A escolha da
-variável-alvo é uma decisão ética, tomada antes da primeira linha de código de
-modelagem.** Discussão completa em [`docs/RIA.md`](docs/RIA.md), seção 2.
+**O achado central do PoC.** Dois modelos, mesmos dados, mesmo algoritmo, vieses
+de sentido e intensidade diferentes. Perguntar *"quem provavelmente deve?"*
+produz um modelo que aprende sobre pobreza — morador de setor pobre tem 2,6×
+mais chance de ser sinalizado. Perguntar *"de quem se consegue recuperar?"*
+produz um modelo que aprende sobretudo sobre o processo de cobrança, mas ainda
+carrega a renda por substitutos como valor venal e distância ao centro. **A
+escolha da variável-alvo reduz o viés, não o elimina**: o Modelo 2 só ordena a
+fila com o limiar calibrado por grupo. Discussão completa em
+[`docs/RIA.md`](docs/RIA.md), seção 2.
 
 ---
 
@@ -313,7 +319,7 @@ modelagem.** Discussão completa em [`docs/RIA.md`](docs/RIA.md), seção 2.
 ## Testes
 
 ```bash
-python -m pytest          # 183 testes, ~1 min
+python -m pytest          # 196 testes, ~1 min
 ```
 
 | Arquivo | O que cobre |
