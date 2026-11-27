@@ -5,12 +5,13 @@ Interface de demonstracao exigida pelo item 6.1.4 do plano de ensino.
 
     streamlit run app/painel.py
 
-Cinco abas, uma por competencia avaliada:
+Seis abas:
     Visao Geral    panorama da carteira e da arrecadacao real coletada
     Cobranca       fila priorizada por retorno esperado
     Contribuinte   simulador individual com explicacao (LGPD Art. 20)
     Equidade       auditoria de fairness e simulacao de mitigacao
     Dados          proveniencia, esquema do banco e limitacoes
+    Assistente     agente de IA que responde perguntas usando src/ferramentas.py
 """
 
 from __future__ import annotations
@@ -27,6 +28,7 @@ RAIZ = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(RAIZ))
 sys.path.insert(0, str(RAIZ / "src"))
 
+import assistente as assistente_ia  # noqa: E402
 import config  # noqa: E402
 from app import tema  # noqa: E402
 
@@ -101,8 +103,9 @@ st.title("Inteligência Tributária — Palmas-TO")
 st.caption("Predição de inadimplência e priorização da dívida ativa · "
            "Projeto Integrador, Eixo II — Bacharelado Interdisciplinar em IA / UFT")
 
-aba_geral, aba_cobranca, aba_contribuinte, aba_equidade, aba_dados = st.tabs(
-    ["Visão Geral", "Fila de Cobrança", "Contribuinte", "Equidade", "Dados e Limites"])
+aba_geral, aba_cobranca, aba_contribuinte, aba_equidade, aba_dados, aba_assistente = st.tabs(
+    ["Visão Geral", "Fila de Cobrança", "Contribuinte", "Equidade", "Dados e Limites",
+     "Assistente"])
 
 
 # ==========================================================================
@@ -525,6 +528,131 @@ arrecadacao_mensal   -- série agregada real, coletada da API""", language="text
 
     with st.expander("Ver amostra da visão analítica"):
         st.dataframe(dados.head(50), use_container_width=True, hide_index=True)
+
+
+# ==========================================================================
+# Assistente (agente de IA sobre as ferramentas de src/ferramentas.py)
+# ==========================================================================
+SUGESTOES = {
+    ":material/insights: Panorama da carteira": "Qual o panorama da carteira de dívida ativa?",
+    ":material/format_list_numbered: Fila em Taquaralto":
+        "Quais são os 5 primeiros da fila de cobrança no setor Taquaralto?",
+    ":material/balance: Equidade do modelo":
+        "O modelo de recuperabilidade trata as faixas de renda de forma equilibrada?",
+    ":material/map: Setores com mais risco":
+        "Quais setores têm a maior taxa de inadimplência e quanto de dívida concentram?",
+}
+
+
+def _segredos() -> dict:
+    """Credenciais de .streamlit/secrets.toml, quando existir (nunca versionado)."""
+    try:
+        return {k: st.secrets[k] for k in ("OPENROUTER_API_KEY", "OPENROUTER_MODEL")
+                if k in st.secrets}
+    except Exception:
+        return {}
+
+
+@st.cache_resource
+def obter_assistente(chave: str, modelo_ia: str) -> assistente_ia.Assistente:
+    return assistente_ia.Assistente(assistente_ia.ClienteOpenRouter(chave, modelo_ia))
+
+
+def _texto_md(texto: str) -> str:
+    """O Markdown do Streamlit le $...$ como formula: 'R$ 10 e R$ 20' quebraria."""
+    return texto.replace("$", r"\$")
+
+
+def mostrar_resposta(texto: str, chamadas: list[dict]) -> None:
+    st.markdown(_texto_md(texto))
+    if chamadas:
+        with st.expander(f":material/build: {len(chamadas)} consulta(s) às ferramentas"):
+            for chamada in chamadas:
+                argumentos = json.dumps(chamada["argumentos"], ensure_ascii=False)
+                st.markdown(f"**`{chamada['ferramenta']}`** `{argumentos}`")
+                st.json(chamada["resultado"], expanded=False)
+
+
+def nova_conversa() -> None:
+    st.session_state.conversa_ia = []
+    st.session_state.historico_ia = []
+    st.session_state.pendente_ia = None
+
+
+# Os callbacks guardam a pergunta ANTES da nova execucao do script. Assim ela e
+# respondida antes de o cabecalho (custo) e as sugestoes serem desenhados, e a
+# tela nao mostra estado da rodada anterior.
+def _guardar_sugestao() -> None:
+    escolha = st.session_state.get("sugestao_ia")
+    if escolha:
+        st.session_state.pendente_ia = SUGESTOES[escolha]
+
+
+def _guardar_digitada() -> None:
+    texto = (st.session_state.get("entrada_ia") or "").strip()
+    if texto:
+        st.session_state.pendente_ia = texto
+
+
+with aba_assistente:
+    st.markdown("### Assistente de análise")
+    st.caption("Pergunte em linguagem natural. Um modelo de linguagem escolhe quais funções "
+               "deste painel consultar e redige a resposta; os números vêm dessas funções, "
+               "e cada consulta fica visível abaixo da resposta. Beneficiários do IPTU Social "
+               "estão fora do alcance das ferramentas, por regra do código.")
+
+    try:
+        chave_ia, modelo_ia = assistente_ia.ler_configuracao(_segredos())
+    except assistente_ia.ErroAssistente:
+        st.info("Assistente desativado: falta a chave do OpenRouter. Crie o arquivo `.env` na "
+                "raiz do projeto com a linha `OPENROUTER_API_KEY=...` (o arquivo está no "
+                "`.gitignore`) e recarregue a página.")
+    else:
+        if "conversa_ia" not in st.session_state:
+            nova_conversa()
+        conversa = st.session_state.conversa_ia
+        cabecalho_ia = st.container()   # preenchido no fim, com o custo ja atualizado
+
+        for troca in conversa:
+            with st.chat_message("user"):
+                st.markdown(_texto_md(troca["pergunta"]))
+            with st.chat_message("assistant"):
+                mostrar_resposta(troca["texto"], troca["chamadas"])
+
+        pergunta = st.session_state.pendente_ia
+        st.session_state.pendente_ia = None
+        if pergunta:
+            with st.chat_message("user"):
+                st.markdown(_texto_md(pergunta))
+            with st.chat_message("assistant"):
+                try:
+                    with st.spinner("Consultando as ferramentas..."):
+                        resposta = obter_assistente(chave_ia, modelo_ia).responder(
+                            pergunta, st.session_state.historico_ia)
+                except assistente_ia.ErroAssistente as erro:
+                    st.error(f"Não foi possível obter a resposta: {erro}")
+                else:
+                    mostrar_resposta(resposta.texto, resposta.chamadas)
+                    st.session_state.historico_ia = resposta.mensagens
+                    conversa.append({"pergunta": pergunta, "texto": resposta.texto,
+                                     "chamadas": resposta.chamadas,
+                                     "custo_usd": resposta.uso["custo_usd"]})
+
+        if not conversa:
+            st.pills("Sugestões", list(SUGESTOES), label_visibility="collapsed",
+                     key="sugestao_ia", on_change=_guardar_sugestao)
+        st.chat_input("Pergunte sobre a carteira, a fila, um contribuinte ou a equidade",
+                      submit_mode="disable", key="entrada_ia", on_submit=_guardar_digitada)
+
+        with cabecalho_ia, st.container(horizontal=True, vertical_alignment="center"):
+            custo = sum(t["custo_usd"] for t in conversa)
+            st.caption(f"Modelo `{modelo_ia}` via OpenRouter · custo desta conversa: "
+                       f"US\\$ {custo:.4f}")
+            st.button("Nova conversa", icon=":material/refresh:", on_click=nova_conversa,
+                      disabled=not conversa, width="content")
+
+        st.caption("O assistente apoia a análise e não decide cobrança. Perguntas e consultas "
+                   "ficam registradas em `data/assistente_auditoria.jsonl`.")
 
 st.divider()
 st.caption("PoC acadêmico · Projeto Integrador Eixo II · UFT — "

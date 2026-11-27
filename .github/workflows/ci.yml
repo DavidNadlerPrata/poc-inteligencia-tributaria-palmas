@@ -48,6 +48,11 @@ jobs:
       - name: Verificar fórmulas de fairness
         run: python -m pytest tests/test_fairness.py -v
 
+      # O assistente de IA so enxerga os dados pelas ferramentas: se alguma
+      # delas deixar passar um beneficiario do IPTU Social, o build para aqui.
+      - name: Verificar que as ferramentas do assistente não expõem o IPTU Social
+        run: python -m pytest tests/test_ferramentas.py -v -k "IptuSocial or SomenteLeitura"
+
   # ------------------------------------------------------------------
   # 2. Qualidade de codigo
   # ------------------------------------------------------------------
