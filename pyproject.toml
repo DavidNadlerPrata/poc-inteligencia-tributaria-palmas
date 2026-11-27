@@ -33,12 +33,13 @@ ignore = [
 # Os pontos de entrada ajustam sys.path antes de importar os modulos locais,
 # entao o import fora do topo e proposital.
 "executar_poc.py" = ["E402"]
+"avaliar_assistente.py" = ["E402"]
 "app/painel.py" = ["E402"]
 "tests/conftest.py" = ["E402"]
 "notebooks/gerar_eda.py" = ["E501"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["config", "coleta", "etl", "fairness", "modelo", "sintetico"]
+known-first-party = ["assistente", "config", "coleta", "etl", "fairness", "ferramentas", "modelo", "sintetico"]
 
 # --------------------------------------------------------------------------
 # Pytest

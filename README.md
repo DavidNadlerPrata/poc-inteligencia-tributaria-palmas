@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/DavidNadlerPrata/poc-inteligencia-tributaria-palmas/actions/workflows/ci.yml/badge.svg)](https://github.com/DavidNadlerPrata/poc-inteligencia-tributaria-palmas/actions/workflows/ci.yml)
 [![Python](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-blue)](https://www.python.org/)
-[![Testes](https://img.shields.io/badge/testes-125-brightgreen)](tests/)
+[![Testes](https://img.shields.io/badge/testes-183-brightgreen)](tests/)
 [![Cobertura](https://img.shields.io/badge/cobertura-90%25-brightgreen)](tests/)
 
 ## Publicações
@@ -74,6 +74,16 @@ Depois, o painel:
 ```bash
 streamlit run app/painel.py
 ```
+
+A aba **Assistente** do painel precisa de uma chave do OpenRouter. Crie o
+arquivo `.env` na raiz (ele está no `.gitignore` e nunca deve ser versionado):
+
+```
+OPENROUTER_API_KEY=sk-or-...
+OPENROUTER_MODEL=deepseek/deepseek-v4.1-flash
+```
+
+Sem a chave, o painel funciona normalmente e a aba explica como configurá-la.
 
 A suíte de testes:
 
@@ -151,7 +161,71 @@ correspondem ao código.
                     └──────────────────┬──────────────────┘
                                        ▼
                     auditoria de fairness · painel Streamlit
+                                       │
+                                       ▼
+                     src/ferramentas.py  (7 funções, somente leitura,
+                       IPTU Social excluído no código)
+                                       ▲  pede ferramenta / recebe JSON
+                                       ▼
+                     src/assistente.py  — agente de IA (OpenRouter)
+                       aba "Assistente" do painel
 ```
+
+## Assistente de IA (arquitetura de agente)
+
+O pipeline de ML continua determinístico: split, treino, limiar, exclusão do
+IPTU Social e auditoria de fairness são código testado. O agente de IA entra
+**em volta** dele, onde o sistema conversa com pessoas: responder perguntas do
+servidor da Sefin, explicar a posição de um contribuinte na fila, resumir a
+auditoria.
+
+```
+pergunta ──► modelo de linguagem ──► pede uma ferramenta ──► ferramentas.executar()
+                  ▲                                                  │
+                  └──────────── resultado em JSON ◄─────────────────┘
+                  (repete até 8 vezes) ──► resposta em texto + registro de auditoria
+```
+
+| Ferramenta | O que devolve |
+|---|---|
+| `resumo_carteira` | Universo de cobrança, dívida, retorno esperado, faixas |
+| `fila_cobranca` | Fila por retorno esperado, com filtro de setor e faixa (até 50 casos) |
+| `indicadores_por` | Agregados por setor, tipo de imóvel, faixa de renda ou de recuperabilidade |
+| `consultar_contribuinte` | Scores e posição de um contribuinte pseudonimizado, comparados à carteira |
+| `importancia_atributos` | Importância por permutação de cada modelo |
+| `auditoria_equidade` | Paridade demográfica e igualdade de oportunidade por faixa de renda |
+| `desempenho_modelos` | Métricas de teste dos dois modelos |
+
+**As salvaguardas ficam no código das ferramentas, não no prompt.** O modelo de
+linguagem nunca lê o banco: só pede funções, com argumentos validados contra um
+esquema. O IPTU Social é excluído num único ponto (`ferramentas._carregar`), o
+banco é aberto em modo somente leitura e a única consulta com valor externo é
+parametrizada. Nenhum texto digitado no chat desliga essas regras — o prompt
+orienta o comportamento, mas não é a barreira.
+
+**Duas camadas de verificação:**
+
+| | `tests/test_ferramentas.py` e `tests/test_assistente.py` | `avaliar_assistente.py` |
+|---|---|---|
+| Verifica | O código: exclusão, leitura, validação, laço do agente, auditoria | O comportamento do modelo real |
+| Modelo de linguagem | Substituído por roteiro (sem rede, sem chave) | Chamado de verdade |
+| Onde roda | CI, a cada push | Manualmente, com a chave |
+| Custo | Zero | ~US$ 0,01 por rodada |
+
+A avaliação tem nove casos com gabarito calculado direto das ferramentas: cinco
+de exatidão (o número citado é o certo?) e quatro de recusa (listar
+beneficiários do IPTU Social, injeção de instrução, pergunta sem ferramenta que
+a responda, pedido para redigir notificação de cobrança). Na primeira rodada,
+com `deepseek/deepseek-v4.1-flash`, passou em 9 de 9 por US$ 0,007.
+
+**LGPD.** Com a carteira sintética não há dado pessoal envolvido. Com dado real,
+enviar resultados de ferramentas a um provedor externo é tratamento por
+operador: exige pseudonimização (já feita aqui), autorização formal da Sefin e
+registro no RIA. O cliente pede ao OpenRouter só provedores que declaram não
+reter nem treinar com os dados (`provider.data_collection = "deny"`), mas o
+roteamento entre provedores, inclusive estrangeiros, precisa constar do RIA.
+Toda pergunta, ferramenta chamada e resposta fica em
+`data/assistente_auditoria.jsonl`.
 
 ## Estrutura do repositório
 
@@ -163,11 +237,14 @@ correspondem ao código.
 | `src/etl.py` | Pipeline ETL, DDL do banco e visão analítica |
 | `src/modelo.py` | Treino dos dois modelos, fila de cobrança, interpretabilidade |
 | `src/fairness.py` | Paridade demográfica, igualdade de oportunidade, mitigação |
-| `app/painel.py` | MVP — painel Streamlit de cinco abas |
+| `app/painel.py` | MVP — painel Streamlit de seis abas, incluindo o assistente de IA |
+| `src/ferramentas.py` | **Ferramentas do assistente** — funções somente leitura que o agente pode chamar |
+| `src/assistente.py` | **Agente de IA** — laço modelo ↔ ferramentas via OpenRouter, com registro de auditoria |
+| `avaliar_assistente.py` | Avaliação do assistente com o modelo real (9 casos, manual) |
 | `app/tema.py` | Paleta validada e enxoval dos gráficos |
 | `notebooks/eda_sprint2.ipynb` | **Relatório de EDA da Sprint 2**, executado |
 | `notebooks/gerar_eda.py` | Script que gera o notebook (diff legível no Git) |
-| `tests/` | Suíte com 125 testes — `test_etica.py` é o mais importante |
+| `tests/` | Suíte com 183 testes — `test_etica.py` é o mais importante |
 | `data/carteira_contribuintes.csv` | **Carteira sintética versionada** — 20.000 registros, pronta para abrir |
 | `tests/fixtures/` | Amostra de dados reais para o CI rodar sem acessar a API |
 | `.github/workflows/ci.yml` | Integração contínua (GitHub Actions) |
@@ -236,7 +313,7 @@ modelagem.** Discussão completa em [`docs/RIA.md`](docs/RIA.md), seção 2.
 ## Testes
 
 ```bash
-python -m pytest          # 125 testes, ~1 min
+python -m pytest          # 183 testes, ~1 min
 ```
 
 | Arquivo | O que cobre |
@@ -245,6 +322,8 @@ python -m pytest          # 125 testes, ~1 min
 | `tests/test_fairness.py` | Fórmulas de paridade demográfica e igualdade de oportunidade, verificadas contra casos calculados à mão |
 | `tests/test_dados.py` | Gerador sintético, calibração, integridade referencial do banco, limpeza da arrecadação |
 | `tests/test_modelo_coleta.py` | Métricas dos modelos, interpretabilidade, retry e paginação da API (com dublês, sem rede) |
+| `tests/test_ferramentas.py` | Ferramentas do assistente: nenhuma saída cita beneficiário do IPTU Social, banco somente leitura, validação de argumentos, coerência com a fila do pipeline |
+| `tests/test_assistente.py` | Laço do agente com o modelo substituído por roteiro: execução de ferramentas, erros, limite de passos, histórico, auditoria, cliente HTTP |
 
 `test_etica.py` existe porque o Model Card afirma que a exclusão do IPTU Social
 deve ser *"verificada por teste automatizado, não por disciplina de quem opera"*.
@@ -253,7 +332,7 @@ exclusão do grupo protegido, o filtro da fila e a fórmula do retorno esperado 
 em cada caso os testes correspondentes falharam, confirmando que detectam
 regressão real e não apenas acompanham o código.
 
-Cobertura atual: **90%** das linhas de `src/`.
+Cobertura atual: **94%** das linhas de `src/`.
 
 ## Integração contínua
 
@@ -263,7 +342,7 @@ Actions é gratuito em repositórios públicos.
 
 | Job | Verifica | Depende de |
 |---|---|---|
-| `regras-eticas` | Exclusão do IPTU Social, vazamento, fórmulas de fairness | — |
+| `regras-eticas` | Exclusão do IPTU Social (no pipeline e nas ferramentas do assistente), vazamento, fórmulas de fairness | — |
 | `qualidade` | Lint com ruff | — |
 | `testes` | Suíte completa em Python 3.11, 3.12 e 3.13, com cobertura | `regras-eticas` |
 | `pipeline` | `executar_poc.py` de ponta a ponta e artefatos gerados | `regras-eticas` |

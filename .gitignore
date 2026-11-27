@@ -45,3 +45,8 @@ site/_saida/
 # Sistema
 .DS_Store
 Thumbs.db
+
+# Segredos locais (chave do OpenRouter) e registro de auditoria do assistente
+.env
+.streamlit/secrets.toml
+data/*.jsonl
