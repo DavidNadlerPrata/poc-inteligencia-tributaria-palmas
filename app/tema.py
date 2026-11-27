@@ -100,3 +100,13 @@ def compacto(valor: float) -> str:
     if abs(valor) >= 1_000:
         return f"R$ {valor / 1_000:.0f} mil"
     return moeda(valor)
+
+
+def milhar(valor: int) -> str:
+    """Inteiro com ponto de milhar: 16604 -> '16.604'."""
+    return f"{valor:,}".replace(",", ".")
+
+
+def percentual(fracao: float, casas: int = 1) -> str:
+    """Fracao em percentual com virgula decimal: 0.47 -> '47,0%'."""
+    return f"{fracao * 100:.{casas}f}%".replace(".", ",")

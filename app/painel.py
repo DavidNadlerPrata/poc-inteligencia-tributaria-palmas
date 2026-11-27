@@ -114,14 +114,34 @@ aba_geral, aba_cobranca, aba_contribuinte, aba_equidade, aba_dados, aba_assisten
 with aba_geral:
     com_divida = dados[dados["valor_divida_consolidada"] > 0]
 
+    # Cada cartao mostra a carteira inteira e, abaixo, a parte que entra na fila
+    # de cobranca (sem os beneficiarios do IPTU Social). O percentual recuperavel
+    # usa a MESMA base da fila: dividir o retorno da fila pela divida da carteira
+    # inteira subestimaria a recuperacao.
+    na_fila = com_divida[com_divida["iptu_social"] == 0]
+    divida_total = com_divida["valor_divida_consolidada"].sum()
+    divida_fila = na_fila["valor_divida_consolidada"].sum()
+    protegidos = int(dados["iptu_social"].sum())
+
+    # Os textos abaixo dos valores sao composicao, nao variacao: sem seta e sem cor.
+    sem_seta = {"delta_color": "off", "delta_arrow": "off"}
+
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Imóveis na carteira", f"{len(dados):,}".replace(",", "."))
-    c2.metric("Com dívida inscrita", f"{len(com_divida):,}".replace(",", "."),
-              f"{len(com_divida) / len(dados):.1%} da carteira")
-    c3.metric("Dívida ativa", tema.compacto(com_divida["valor_divida_consolidada"].sum()))
+    c1.metric("Imóveis na carteira", tema.milhar(len(dados)),
+              f"{tema.milhar(protegidos)} no IPTU Social", **sem_seta)
+    c2.metric("Com dívida inscrita", tema.milhar(len(com_divida)),
+              f"{tema.milhar(len(na_fila))} na fila de cobrança", **sem_seta,
+              help=f"{tema.percentual(len(com_divida) / len(dados))} da carteira. A fila de "
+                   f"cobrança exclui os {tema.milhar(len(com_divida) - len(na_fila))} "
+                   "beneficiários do IPTU Social que têm dívida.")
+    c3.metric("Dívida ativa", tema.compacto(divida_total),
+              f"{tema.compacto(divida_fila)} na fila de cobrança", **sem_seta)
     if fila is not None:
-        c4.metric("Retorno esperado", tema.compacto(fila["retorno_esperado"].sum()),
-                  f"{fila['retorno_esperado'].sum() / com_divida['valor_divida_consolidada'].sum():.1%} recuperável")
+        retorno = fila["retorno_esperado"].sum()
+        c4.metric("Retorno esperado", tema.compacto(retorno),
+                  f"{tema.percentual(retorno / divida_fila)} da dívida na fila", **sem_seta,
+                  help="Soma, na fila de cobrança, de dívida × probabilidade de "
+                       "recuperação em 12 meses estimada pelo modelo.")
 
     st.divider()
     col_esq, col_dir = st.columns(2)
@@ -360,7 +380,7 @@ with aba_contribuinte:
 
                 faixa = mod.faixa_recuperabilidade(prob_rec)
                 st.metric("Probabilidade de recuperação da dívida (12 meses)", f"{prob_rec:.1%}",
-                          f"faixa {faixa}")
+                          f"faixa {faixa}", delta_color="off", delta_arrow="off")
                 st.metric("Retorno esperado", tema.moeda(divida * prob_rec))
             else:
                 st.caption("Sem dívida inscrita: o modelo de recuperabilidade não se aplica.")
@@ -408,7 +428,7 @@ with aba_equidade:
             aprovado = teste["aprovado"]
             coluna.metric(teste["metrica"], f"{teste['diferenca']:.3f}",
                           "dentro do limiar (0,10)" if aprovado else "acima do limiar (0,10)",
-                          delta_color="normal" if aprovado else "inverse")
+                          delta_color="green" if aprovado else "red", delta_arrow="off")
 
         if not (dp["aprovado"] and eo["aprovado"]):
             st.error(f"**Disparidade relevante detectada.** O grupo "
