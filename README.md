@@ -97,6 +97,31 @@ O notebook de EDA da Sprint 2 (já vem executado; para regerá-lo do script):
 python notebooks/gerar_eda.py
 ```
 
+### Publicar o painel no Streamlit Community Cloud
+
+O painel funciona num servidor que só tem o que está no Git. Na primeira
+execução, ele roda `executar_poc.py --sem-rede` sozinho (cerca de 1 minuto) e
+gera banco, modelos e fila a partir da carteira sintética e da arrecadação
+real versionadas — sem chamar a API da Prefeitura.
+
+1. Entre em [share.streamlit.io](https://share.streamlit.io) com a conta do
+   GitHub e autorize o acesso ao repositório.
+2. **Create app** → repositório `DavidNadlerPrata/poc-inteligencia-tributaria-palmas`,
+   o branch desejado e o arquivo principal `app/painel.py`.
+3. Em **Advanced settings**, escolha Python 3.12 e cole os segredos:
+
+   ```toml
+   OPENROUTER_API_KEY = "sk-or-..."
+   SENHA_ASSISTENTE = "uma senha para a banca"
+   ```
+
+   Com `SENHA_ASSISTENTE` definida, a aba Assistente pede a senha antes do
+   chat: a chave do OpenRouter tem custo por pergunta. Sem a chave, o painel
+   funciona e a aba explica que o assistente está desativado.
+4. **Deploy.** A primeira abertura demora enquanto o pipeline roda; as
+   seguintes são imediatas. Defina também, no OpenRouter, um limite de crédito
+   para a chave.
+
 ---
 
 ## A questão dos dados — leia antes de tudo
