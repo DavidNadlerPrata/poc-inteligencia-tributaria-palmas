@@ -778,12 +778,16 @@ def _acesso_liberado() -> bool:
     senha = _segredos().get("SENHA_ASSISTENTE") or os.environ.get("SENHA_ASSISTENTE")
     if not senha or st.session_state.get("assistente_liberado"):
         return True
-    with st.form("senha_assistente"):
+    # O formulario fica num espaco reservado: com a senha certa, ele e apagado
+    # na mesma execucao, e o chat aparece no lugar.
+    espaco = st.empty()
+    with espaco.form("senha_assistente"):
         tentativa = st.text_input("Senha do assistente", type="password")
         entrou = st.form_submit_button("Entrar")
     if entrou:
         if hmac.compare_digest(tentativa.encode(), str(senha).encode()):
             st.session_state.assistente_liberado = True
+            espaco.empty()
             return True
         st.error("Senha incorreta.")
     st.caption("Nesta versão publicada, o assistente usa um modelo de linguagem pago e o "
@@ -879,9 +883,9 @@ with aba_assistente:
                       submit_mode="disable", key="entrada_ia", on_submit=_guardar_digitada)
 
         with cabecalho_ia, st.container(horizontal=True, vertical_alignment="center"):
-            custo = sum(t["custo_usd"] for t in conversa)
+            custo = f"{sum(t['custo_usd'] for t in conversa):.4f}".replace(".", ",")
             st.caption(f"Modelo `{modelo_ia}` via OpenRouter · custo desta conversa: "
-                       f"US\\$ {custo:.4f}")
+                       f"US\\$ {custo}")
             st.button("Nova conversa", icon=":material/refresh:", on_click=nova_conversa,
                       disabled=not conversa, width="content")
 
