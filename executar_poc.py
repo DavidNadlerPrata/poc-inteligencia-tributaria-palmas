@@ -47,7 +47,15 @@ def main() -> int:
     cabecalho("[Sprint 2] Coleta de dados reais via API REST da Prefeitura de Palmas")
     arrecadacao = None
     if args.sem_rede:
-        print("Modo --sem-rede: coleta online ignorada.")
+        # Sem rede, mas com o arquivo versionado da ultima coleta: e assim que o
+        # CI e o Streamlit Community Cloud montam o banco sem chamar a API.
+        if config.CSV_ARRECADACAO.exists():
+            import pandas as pd
+            arrecadacao = pd.read_csv(config.CSV_ARRECADACAO, sep=";", dtype=str)
+            print(f"Modo --sem-rede: usando a arrecadacao local "
+                  f"({len(arrecadacao)} registros, {config.CSV_ARRECADACAO.name}).")
+        else:
+            print("Modo --sem-rede: coleta online ignorada.")
     else:
         try:
             arrecadacao = coleta.coletar(ano=args.ano, forcar=args.coletar)

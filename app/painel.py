@@ -16,7 +16,10 @@ Seis abas:
 
 from __future__ import annotations
 
+import hmac
 import json
+import os
+import subprocess
 import sys
 from pathlib import Path
 
@@ -35,6 +38,37 @@ from app import tema  # noqa: E402
 
 st.set_page_config(page_title="Inteligencia Tributaria | Palmas-TO",
                    page_icon="■", layout="wide")
+
+
+# --------------------------------------------------------------------------
+# Primeira execucao num servidor novo (ex.: Streamlit Community Cloud)
+# --------------------------------------------------------------------------
+OBRIGATORIOS = [config.BANCO, config.MODELO_INADIMPLENCIA, config.MODELO_RECUPERABILIDADE,
+                config.METRICAS, config.DADOS / "fila_cobranca.csv"]
+
+
+@st.cache_resource(show_spinner=False)
+def preparar_artefatos() -> None:
+    """Gera banco, modelos e fila quando o servidor so tem o que esta no Git.
+
+    Roda `executar_poc.py --sem-rede`: usa a carteira sintetica e a arrecadacao
+    versionadas, sem nenhuma chamada a API da Prefeitura. O cache_resource
+    garante uma unica execucao por servidor, mesmo com varios acessos ao mesmo
+    tempo.
+    """
+    resultado = subprocess.run(
+        [sys.executable, str(RAIZ / "executar_poc.py"), "--sem-rede"],
+        cwd=RAIZ, capture_output=True, text=True, timeout=1800,
+        env={**os.environ, "PYTHONIOENCODING": "utf-8"})
+    if resultado.returncode != 0:
+        raise RuntimeError("o pipeline falhou ao preparar os dados: "
+                           + resultado.stdout[-1500:] + resultado.stderr[-1500:])
+
+
+if any(not arquivo.exists() for arquivo in OBRIGATORIOS):
+    with st.spinner("Primeira execução neste servidor: gerando banco, modelos e fila de "
+                    "cobrança a partir da carteira sintética. Leva alguns minutos."):
+        preparar_artefatos()
 
 
 # --------------------------------------------------------------------------
@@ -723,7 +757,8 @@ SUGESTOES = {
 def _segredos() -> dict:
     """Credenciais de .streamlit/secrets.toml, quando existir (nunca versionado)."""
     try:
-        return {k: st.secrets[k] for k in ("OPENROUTER_API_KEY", "OPENROUTER_MODEL")
+        return {k: st.secrets[k]
+                for k in ("OPENROUTER_API_KEY", "OPENROUTER_MODEL", "SENHA_ASSISTENTE")
                 if k in st.secrets}
     except Exception:
         return {}
@@ -732,6 +767,28 @@ def _segredos() -> dict:
 @st.cache_resource
 def obter_assistente(chave: str, modelo_ia: str) -> assistente_ia.Assistente:
     return assistente_ia.Assistente(assistente_ia.ClienteOpenRouter(chave, modelo_ia))
+
+
+def _acesso_liberado() -> bool:
+    """Senha do assistente na versao publicada (SENHA_ASSISTENTE nos segredos).
+
+    Localmente, sem a senha configurada, o assistente fica aberto. Publicado, a
+    senha protege a chave do OpenRouter: cada pergunta tem custo.
+    """
+    senha = _segredos().get("SENHA_ASSISTENTE") or os.environ.get("SENHA_ASSISTENTE")
+    if not senha or st.session_state.get("assistente_liberado"):
+        return True
+    with st.form("senha_assistente"):
+        tentativa = st.text_input("Senha do assistente", type="password")
+        entrou = st.form_submit_button("Entrar")
+    if entrou:
+        if hmac.compare_digest(tentativa.encode(), str(senha).encode()):
+            st.session_state.assistente_liberado = True
+            return True
+        st.error("Senha incorreta.")
+    st.caption("Nesta versão publicada, o assistente usa um modelo de linguagem pago e o "
+               "acesso é restrito. Peça a senha à coordenação do Eixo II.")
+    return False
 
 
 def _texto_md(texto: str) -> str:
@@ -780,10 +837,11 @@ with aba_assistente:
     try:
         chave_ia, modelo_ia = assistente_ia.ler_configuracao(_segredos())
     except assistente_ia.ErroAssistente:
+        chave_ia = modelo_ia = None
         st.info("Assistente desativado: falta a chave do OpenRouter. Crie o arquivo `.env` na "
                 "raiz do projeto com a linha `OPENROUTER_API_KEY=...` (o arquivo está no "
                 "`.gitignore`) e recarregue a página.")
-    else:
+    if chave_ia and _acesso_liberado():
         if "conversa_ia" not in st.session_state:
             nova_conversa()
         conversa = st.session_state.conversa_ia

@@ -15,6 +15,11 @@ models/*.json
 # tests/test_dados.py verifica que ela continua em sincronia com o gerador.
 !data/carteira_contribuintes.csv
 
+# A arrecadacao real de 2025 (17.507 registros, 2,8 MB) e versionada para que o
+# painel publicado mostre o grafico sem chamar a API: automacao nenhuma coleta.
+# Sao dados publicos do portal de transparencia, sem dado pessoal.
+!data/arrecadacao_bruta.csv
+
 # Logs
 *.log
 
