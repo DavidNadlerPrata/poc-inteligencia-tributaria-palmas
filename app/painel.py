@@ -580,8 +580,10 @@ estrutura de colunas de um cadastro imobiliário municipal.
                 f"**{roc('recuperabilidade', 'alcancavel')}** na recuperabilidade; mesmo "
                 "conhecendo também o ruído oculto, não passaria de "
                 f"{roc('inadimplencia', 'absoluto')} e {roc('recuperabilidade', 'absoluto')}. "
-                "O oráculo usa a faixa de renda, que os modelos deixam de fora por decisão "
-                "ética — parte da distância até o teto é o custo dessa decisão.")
+                "O Modelo 1 está no teto. A distância do Modelo 2 vem do algoritmo do "
+                "pipeline: uma regressão logística, a mesma forma do gerador, chega perto do "
+                "teto. Deixar a faixa de renda de fora quase não custa nada — valor venal e "
+                "distância ao centro carregam a mesma informação.")
         st.caption("Um ROC-AUC acima do teto seria impossível de forma legítima: indicaria "
                    "vazamento de dados — o modelo usando informação do resultado ou do futuro "
                    "—, não qualidade. As métricas usam o corte de decisão de 0,5.")

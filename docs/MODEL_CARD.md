@@ -115,9 +115,17 @@ termo oculto, que representa o que nenhum cadastro registra, e o sorteio final
 de cada resultado. Por isso nenhum modelo acerta tudo. Um oráculo que conhece a
 fórmula do gerador e todos os seus atributos (`sintetico.teto_de_desempenho`)
 chega a ROC-AUC de **0,804** na inadimplência e **0,722** na recuperabilidade;
-conhecendo também o ruído oculto, a 0,832 e 0,777. O Modelo 1 está no teto. Ao
-Modelo 2 faltam 0,036, e parte disso é o custo de não usar a faixa de renda,
-que o oráculo usa. Um modelo acima do teto estaria usando informação do
+conhecendo também o ruído oculto, a 0,832 e 0,777.
+
+No mesmo conjunto de teste, o Modelo 1 fica a 0,002 do oráculo (diferença
+dentro do ruído de amostragem): está no teto. O Modelo 2 fica a 0,033 (IC 95%
+de 0,019 a 0,047), e a causa é o algoritmo: uma regressão logística, que tem a
+mesma forma do gerador, chega a 0,714 contra 0,718 do oráculo, enquanto o
+gradient boosting sobreajusta com 6 mil casos de treino. Não é a exclusão da
+faixa de renda: retirada do oráculo, o teto quase não muda (0,722 para 0,721),
+porque valor venal e distância ao centro carregam a mesma informação.
+
+Um modelo acima do teto estaria usando informação do
 resultado ou do futuro — por isso `tests/test_etica.py` falha se isso
 acontecer.
 Isso é esperado e desejável num PoC cujo processo gerador embute ruído
