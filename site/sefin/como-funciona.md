@@ -90,7 +90,7 @@ Esta seção é tão importante quanto as anteriores.
 
 O sistema acerta consideravelmente mais que o acaso, e consideravelmente menos
 que a perfeição. Na avaliação da prova de conceito, ele identificou corretamente
-**pouco mais da metade dos débitos que de fato seriam recuperados** (54%).
+**pouco mais da metade dos débitos que de fato seriam recuperados** (57%).
 
 Isso significa que **ele erra** — e é importante que a expectativa esteja
 calibrada. Um sistema desse tipo é útil porque melhora a média de uma operação

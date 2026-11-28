@@ -48,20 +48,25 @@ quanto à qualidade do acerto.
 
 | Critério | Sem ajuste | Com ajuste por região | Limite aceitável | Situação final |
 |---|---|---|---|---|
-| Equilíbrio na seleção de casos | 0,120 | 0,001 | 0,10 | <span class="selo selo-aprovado">aprovado</span> |
-| Equilíbrio na qualidade do acerto | 0,115 | 0,085 | 0,10 | <span class="selo selo-aprovado">aprovado</span> |
+| Equilíbrio na seleção de casos | 0,122 | 0,002 | 0,10 | <span class="selo selo-aprovado">aprovado</span> |
+| Equilíbrio na qualidade do acerto | 0,084 | 0,069 | 0,10 | <span class="selo selo-aprovado">aprovado</span> |
 
 O limite de 0,10 é o adotado por uma ferramenta de auditoria de referência
 internacional, e foi fixado antes de medir. Como a simulação tem poucos casos
 de setores de renda alta, a diferença sem ajuste pode estar, na realidade,
-entre 0,06 e 0,19. Por isso o ajuste é aplicado de qualquer forma, e a
+entre 0,05 e 0,19. Por isso o ajuste é aplicado de qualquer forma, e a
 auditoria deve ser refeita com os dados reais.
 
-**Sem ajuste, o sistema passou do limite.** Ele tendia a pôr à frente da fila
-os débitos de setores de renda alta e a reconhecer menos os débitos
-recuperáveis dos setores de renda baixa. O motivo é que características como o
-valor do imóvel e a distância ao centro acompanham a renda da região, mesmo sem
-a renda ser informada ao sistema.
+**Sem ajuste, o sistema passou do limite em um dos critérios.** Ele punha à
+frente da fila uma proporção maior dos débitos de setores de renda alta (49%)
+que dos de renda baixa (41%) e média (37%). Parte disso acompanha a simulação —
+débitos de setores de renda alta são de fato recuperados com mais frequência —,
+mas a diferença passou do limite. Na qualidade do acerto, ficou dentro dele.
+
+Uma versão anterior do sistema, com outro método de cálculo, desequilibrava
+também a qualidade do acerto, porque características como o valor do imóvel e
+a distância ao centro acompanham a renda da região mesmo sem a renda ser
+informada. O método atual depende muito menos delas.
 
 **O ajuste corrige isso de forma transparente.** Cada faixa de renda recebe seu
 próprio ponto de corte, escolhido para que a proporção de casos selecionados

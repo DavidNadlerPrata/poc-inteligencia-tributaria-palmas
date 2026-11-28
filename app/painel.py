@@ -395,7 +395,7 @@ with aba_contribuinte:
             modelo_inad = joblib.load(config.MODELO_INADIMPLENCIA)
             prob_inad = float(modelo_inad.predict_proba(entrada)[0, 1])
 
-            st.metric("Probabilidade de inadimplência no próximo exercício", f"{prob_inad:.1%}")
+            st.metric("Probabilidade de inadimplência no próximo exercício", tema.percentual(prob_inad))
 
             if divida > 0:
                 modelo_rec = joblib.load(config.MODELO_RECUPERABILIDADE)
@@ -403,7 +403,7 @@ with aba_contribuinte:
                 import modelo as mod
 
                 faixa = mod.faixa_recuperabilidade(prob_rec)
-                st.metric("Probabilidade de recuperação da dívida (12 meses)", f"{prob_rec:.1%}",
+                st.metric("Probabilidade de recuperação da dívida (12 meses)", tema.percentual(prob_rec),
                           f"faixa {tema.rotulo_faixa(faixa)}", delta_color="off",
                           delta_arrow="off")
                 st.metric("Retorno esperado", tema.moeda(divida * prob_rec))
@@ -580,10 +580,10 @@ estrutura de colunas de um cadastro imobiliário municipal.
                 f"**{roc('recuperabilidade', 'alcancavel')}** na recuperabilidade; mesmo "
                 "conhecendo também o ruído oculto, não passaria de "
                 f"{roc('inadimplencia', 'absoluto')} e {roc('recuperabilidade', 'absoluto')}. "
-                "O Modelo 1 está no teto. A distância do Modelo 2 vem do algoritmo do "
-                "pipeline: uma regressão logística, a mesma forma do gerador, chega perto do "
-                "teto. Deixar a faixa de renda de fora quase não custa nada — valor venal e "
-                "distância ao centro carregam a mesma informação.")
+                "Os dois modelos estão praticamente no teto. O Modelo 2 usa regressão "
+                "logística, a mesma forma do gerador; com gradient boosting, que sobreajustava "
+                "com poucos casos, ficava em 0,686. Deixar a faixa de renda de fora quase não "
+                "custa desempenho: sem ela, o teto do Modelo 2 passa de 0,722 para 0,721.")
         st.caption("Um ROC-AUC acima do teto seria impossível de forma legítima: indicaria "
                    "vazamento de dados — o modelo usando informação do resultado ou do futuro "
                    "—, não qualidade. As métricas usam o corte de decisão de 0,5.")

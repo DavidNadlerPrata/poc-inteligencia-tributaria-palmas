@@ -32,34 +32,37 @@ encontrar na Sprint 2.
 ## O achado central
 
 <div class="destaque">
-<h3>Dois modelos, mesmos dados, vieses em sentidos opostos</h3>
+<h3>A pergunta e o algoritmo decidem o viés antes da auditoria</h3>
 
-<p>Treinamos dois classificadores sobre a mesma base, com o mesmo algoritmo e os
-mesmos atributos. Os dois reprovaram nos testes de justiça algorítmica, mas com
-intensidades e sentidos diferentes. A diferença está na <strong>pergunta</strong>.</p>
+<p>Treinamos dois classificadores sobre a mesma base e os mesmos atributos. O viés
+de cada um dependeu de duas escolhas feitas antes de qualquer auditoria: a
+<strong>pergunta</strong> e o <strong>algoritmo</strong>.</p>
 
 <p>Perguntar <em>"quem provavelmente vai dever?"</em> produz um modelo que aprende sobre
 pobreza: morador de setor de renda baixa tem <strong>2,6 vezes</strong> mais chance de ser
 sinalizado. Perguntar <em>"de quem se consegue recuperar?"</em> produz um modelo que
 aprende sobretudo sobre o processo de cobrança — o tempo desde a inscrição da
-dívida é, de longe, o atributo mais importante —, mas que ainda carrega a renda
-por substitutos como valor venal e distância ao centro, e favorece os setores
-ricos.</p>
+dívida é, de longe, o atributo mais importante.</p>
 
-<p><strong>A escolha da variável-alvo reduz o viés, mas não o elimina.</strong> O que
-torna o segundo modelo utilizável é a pergunta certa somada a uma mitigação
-explícita e auditável.</p>
+<p>Com gradient boosting, esse segundo modelo ainda reconstruía a renda por
+substitutos como valor venal e distância ao centro, e reprovava nos dois testes.
+Com regressão logística, os substitutos perderam peso: ele passa na igualdade de
+oportunidade e reprova só na paridade, selecionando mais a faixa de renda alta.</p>
+
+<p><strong>Pergunta e algoritmo reduzem o viés, mas não o eliminam.</strong> O que torna
+o segundo modelo utilizável é a combinação deles com uma mitigação explícita e
+auditável.</p>
 </div>
 
 | Modelo | Paridade Demográfica | Igualdade de Oportunidade | Resultado |
 |---|---|---|---|
 | 1 — inadimplência | 0,3322 | 0,3251 | <span class="selo selo-reprovado">reprovado</span> |
-| 2 — recuperabilidade | 0,1203 | 0,1150 | <span class="selo selo-reprovado">reprovado</span> |
-| 2, com corte calibrado por grupo | 0,0008 | 0,085 | <span class="selo selo-aprovado">aprovado</span> |
+| 2 — recuperabilidade | 0,1217 | 0,0840 | <span class="selo selo-reprovado">reprovado</span> |
+| 2, com corte calibrado por grupo | 0,0019 | 0,069 | <span class="selo selo-aprovado">aprovado</span> |
 
 O limite de disparidade adotado é 0,10 de diferença, convenção do AI Fairness 360 (Bellamy et
 al., 2019). Com só 256 casos de renda alta no teste, o intervalo de confiança
-de 95% da paridade do Modelo 2 vai de 0,059 a 0,194 — contém o limite, mas o
+de 95% da paridade do Modelo 2 vai de 0,054 a 0,190 — contém o limite, mas o
 critério, fixado antes da auditoria, não muda por isso. A consequência prática é direta: **apenas o Modelo 2 ordena a fila de cobrança, e
 só com o corte calibrado por grupo**. O Modelo 1 fica restrito a uso
 diagnóstico — dimensionar o problema, planejar educação fiscal, subsidiar
@@ -75,23 +78,27 @@ paridade e calibração ao mesmo tempo, está no
 
 <div class="cartoes">
 <div class="cartao"><div class="valor">17.507</div><div class="rotulo">registros reais coletados da API da Prefeitura</div></div>
-<div class="cartao"><div class="valor">54,9%</div><div class="rotulo">do retorno esperado concentrado nos 20% melhores casos</div></div>
+<div class="cartao"><div class="valor">51,7%</div><div class="rotulo">do retorno esperado concentrado nos 20% melhores casos</div></div>
 <div class="cartao"><div class="valor">208</div><div class="rotulo">testes automatizados, 94% de cobertura</div></div>
-<div class="cartao"><div class="valor">0,0008</div><div class="rotulo">disparidade após mitigação (era 0,1203)</div></div>
+<div class="cartao"><div class="valor">0,0019</div><div class="rotulo">disparidade após mitigação (era 0,1217)</div></div>
 </div>
 
 ### Desempenho dos modelos
 
 | | Modelo 1 — inadimplência | Modelo 2 — recuperabilidade |
 |---|---|---|
-| Acurácia | 0,768 | 0,637 |
-| Precisão | 0,756 | 0,583 |
-| Recall | 0,685 | 0,540 |
-| F1 | 0,719 | 0,561 |
-| ROC-AUC | 0,804 | 0,686 |
+| Algoritmo | gradient boosting | regressão logística |
+| Acurácia | 0,768 | 0,654 |
+| Precisão | 0,756 | 0,602 |
+| Recall | 0,685 | 0,571 |
+| F1 | 0,719 | 0,586 |
+| ROC-AUC | 0,804 | 0,714 |
+| Teto do ROC-AUC nesta carteira | 0,804 | 0,722 |
 
-O processo gerador embute ruído deliberado; métricas próximas de 1,0 num PoC
-como este indicariam vazamento de dados, não qualidade.
+O processo gerador embute ruído deliberado, e por isso há um teto: o ROC-AUC de
+um oráculo que conhece a fórmula do gerador. Os dois modelos estão praticamente
+nele. Um valor acima do teto seria impossível de forma legítima e indicaria
+vazamento de dados, não qualidade.
 
 A carteira é sintética e calibrada por números publicados. A proporção de
 imóveis com dívida (44%) é uma **hipótese** baseada na inadimplência medida em

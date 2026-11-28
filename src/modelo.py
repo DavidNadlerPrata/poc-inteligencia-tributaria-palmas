@@ -18,9 +18,11 @@ from __future__ import annotations
 import json
 
 import joblib
+import numpy as np
 import pandas as pd
 from sklearn.compose import ColumnTransformer
 from sklearn.ensemble import HistGradientBoostingClassifier
+from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import (
     accuracy_score,
     average_precision_score,
@@ -33,7 +35,7 @@ from sklearn.metrics import (
 )
 from sklearn.model_selection import train_test_split
 from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import OneHotEncoder
+from sklearn.preprocessing import FunctionTransformer, OneHotEncoder, StandardScaler
 
 import config
 
@@ -48,8 +50,14 @@ ATRIBUTOS_NUMERICOS = [
 ]
 ATRIBUTOS_CATEGORICOS = ["tipo_imovel", "setor_urbano"]
 
+# Valores monetarios e area: assimetria forte a direita (EDA, achado 4). Na
+# regressao logistica entram em log, o que tambem tira o peso dos extremos.
+ATRIBUTOS_EM_LOG = ["area_construida_m2", "valor_venal", "valor_iptu_anual",
+                    "valor_divida_consolidada"]
 
-def _montar_pipeline() -> Pipeline:
+
+def _montar_pipeline_inadimplencia() -> Pipeline:
+    """Modelo 1: gradient boosting, que ja alcanca o teto desta carteira."""
     preparo = ColumnTransformer([
         ("categoricos", OneHotEncoder(handle_unknown="ignore"), ATRIBUTOS_CATEGORICOS),
         ("numericos", "passthrough", ATRIBUTOS_NUMERICOS),
@@ -59,6 +67,27 @@ def _montar_pipeline() -> Pipeline:
         ("classificador", HistGradientBoostingClassifier(
             max_iter=250, learning_rate=0.08, max_depth=6,
             random_state=config.SEMENTE)),
+    ])
+
+
+def _montar_pipeline_recuperabilidade() -> Pipeline:
+    """Modelo 2: regressao logistica.
+
+    Com cerca de 6 mil dividas para treinar, o gradient boosting sobreajustava
+    (ROC-AUC 0,686 contra teto de 0,718 no mesmo teste); a logistica chega
+    perto do teto. E tambem mais simples de explicar ao contribuinte: cada
+    atributo tem um coeficiente, com sinal e tamanho (LGPD, Art. 20).
+    """
+    lineares = [c for c in ATRIBUTOS_NUMERICOS if c not in ATRIBUTOS_EM_LOG]
+    preparo = ColumnTransformer([
+        ("categoricos", OneHotEncoder(handle_unknown="ignore"), ATRIBUTOS_CATEGORICOS),
+        ("em_log", Pipeline([("log", FunctionTransformer(np.log1p)),
+                             ("escala", StandardScaler())]), ATRIBUTOS_EM_LOG),
+        ("lineares", StandardScaler(), lineares),
+    ])
+    return Pipeline([
+        ("preparo", preparo),
+        ("classificador", LogisticRegression(max_iter=2000)),
     ])
 
 
@@ -112,7 +141,7 @@ def treinar(dados: pd.DataFrame) -> dict:
         X, y, dados[COLUNA_PROTEGIDA], test_size=0.25,
         random_state=config.SEMENTE, stratify=y)
 
-    modelo_inad = _montar_pipeline()
+    modelo_inad = _montar_pipeline_inadimplencia()
     modelo_inad.fit(X_tr, y_tr)
 
     prob = modelo_inad.predict_proba(X_te)[:, 1]
@@ -141,7 +170,7 @@ def treinar(dados: pd.DataFrame) -> dict:
         Xr, yr, com_divida[COLUNA_PROTEGIDA], test_size=0.25,
         random_state=config.SEMENTE, stratify=yr)
 
-    modelo_rec = _montar_pipeline()
+    modelo_rec = _montar_pipeline_recuperabilidade()
     modelo_rec.fit(Xr_tr, yr_tr)
 
     prob_r = modelo_rec.predict_proba(Xr_te)[:, 1]

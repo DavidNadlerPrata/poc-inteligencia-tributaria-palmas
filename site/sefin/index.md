@@ -46,9 +46,9 @@ O retorno esperado — valor multiplicado pela probabilidade — equilibra os do
 ## O que a prova de conceito demonstrou
 
 <div class="cartoes">
-<div class="cartao"><div class="valor">55%</div><div class="rotulo">do resultado alcançado ao trabalhar apenas os 20% melhores casos</div></div>
-<div class="cartao"><div class="valor">84%</div><div class="rotulo">do resultado alcançado na metade da carteira</div></div>
-<div class="cartao"><div class="valor">6 em 10</div><div class="rotulo">casos classificados em faixa de alta ou baixa recuperabilidade — os demais exigem análise</div></div>
+<div class="cartao"><div class="valor">52%</div><div class="rotulo">do resultado alcançado ao trabalhar apenas os 20% melhores casos</div></div>
+<div class="cartao"><div class="valor">82%</div><div class="rotulo">do resultado alcançado na metade da carteira</div></div>
+<div class="cartao"><div class="valor">4 em 10</div><div class="rotulo">casos classificados em faixa de alta ou baixa recuperabilidade — os demais exigem análise</div></div>
 </div>
 
 O achado central é a **concentração**: o retorno não se distribui por igual pela
@@ -57,14 +57,14 @@ desproporcional do que se consegue recuperar.
 
 | Parcela da carteira trabalhada | Retorno alcançado |
 |---|---|
-| 10% dos casos | 37,4% |
-| **20% dos casos** | **54,9%** |
-| 30% dos casos | 67,2% |
-| 50% dos casos | 83,9% |
+| 10% dos casos | 34,3% |
+| **20% dos casos** | **51,7%** |
+| 30% dos casos | 64,2% |
+| 50% dos casos | 81,9% |
 
 Em termos operacionais: se a equipe consegue trabalhar bem um quinto da
 carteira por ciclo, a diferença entre escolher esse quinto ao acaso e escolhê-lo
-pelo retorno esperado é de **quase três vezes** no resultado.
+pelo retorno esperado é de **duas vezes e meia** no resultado.
 
 <div class="aviso">
 <p><strong>Estes percentuais vêm de uma simulação, não de dados reais de contribuintes.</strong></p>

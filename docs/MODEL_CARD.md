@@ -19,22 +19,29 @@ O sistema é composto por **dois modelos** que respondem a perguntas diferentes.
 | **Nome** | Classificador de inadimplência | Scoring de recuperabilidade |
 | **Pergunta** | O contribuinte ficará inadimplente no próximo exercício? | Uma dívida já inscrita será recuperada em 12 meses? |
 | **Tipo** | Classificação binária | Classificação binária (usada como score contínuo) |
-| **Algoritmo** | `HistGradientBoostingClassifier` | `HistGradientBoostingClassifier` |
+| **Algoritmo** | `HistGradientBoostingClassifier` | `LogisticRegression` |
 | **Framework** | scikit-learn 1.9 | scikit-learn 1.9 |
-| **Hiperparâmetros** | `max_iter=250`, `learning_rate=0.08`, `max_depth=6` | idem |
+| **Hiperparâmetros** | `max_iter=250`, `learning_rate=0.08`, `max_depth=6` | `max_iter=2000`; valores monetários e área em log, todos os numéricos padronizados |
 | **Universo de treino** | 18.680 imóveis (após exclusão do IPTU Social) | 8.041 imóveis com dívida inscrita |
 | **Versão** | 0.1.0 (PoC) | 0.1.0 (PoC) |
 | **Licença** | Acadêmica — uso restrito a ensino e pesquisa | idem |
 
-**Por que gradient boosting?** Os atributos misturam variáveis numéricas de
-escalas muito diferentes (reais, dias, contagens) com categóricas de baixa
-cardinalidade, e as relações são não lineares — o efeito do tempo de
-inadimplência sobre a recuperação satura. Árvores impulsionadas lidam com isso
-sem exigir normalização, toleram outliers de valor venal e entregam importância
-de atributos diretamente, o que sustenta o direito à explicação. Regressão
-logística foi considerada pela interpretabilidade, mas perdeu poder preditivo
-nas interações; redes neurais foram descartadas por opacidade desnecessária num
-volume de dados desta ordem.
+**Por que algoritmos diferentes?** A escolha foi feita medindo cada modelo
+contra o teto desta carteira (seção 4):
+
+- **Modelo 1 — gradient boosting.** Com 14 mil registros de treino, chega a
+  ROC-AUC de 0,804, o mesmo valor do teto: nenhum algoritmo faria melhor com
+  estes atributos. Lida sem pré-processamento com escalas diferentes e valores
+  extremos de valor venal.
+- **Modelo 2 — regressão logística.** O gradient boosting sobreajustava com os
+  6 mil casos de treino (ROC-AUC 0,686 contra teto de 0,718 no mesmo teste); a
+  logística chega a 0,714. Ela precisa de valores monetários em log e de
+  atributos padronizados, mas tem uma vantagem decisiva para o modelo que
+  ordena a cobrança: cada atributo tem um coeficiente, com sinal e tamanho, o
+  que torna a explicação ao contribuinte (LGPD, Art. 20) direta.
+
+Redes neurais foram descartadas por opacidade desnecessária num volume de dados
+desta ordem.
 
 ---
 
@@ -98,17 +105,18 @@ Matriz de confusão `[[VN, FP], [FN, VP]]` = `[[2200, 447], [638, 1385]]`
 
 | Métrica | Valor |
 |---|---|
-| Acurácia | 0,637 |
-| Precisão | 0,583 |
-| Recall | 0,540 |
-| F1-score | 0,561 |
-| ROC-AUC | 0,686 |
+| Acurácia | 0,654 |
+| Precisão | 0,602 |
+| Recall | 0,571 |
+| F1-score | 0,586 |
+| ROC-AUC | 0,714 |
 
-Matriz de confusão `[[VN, FP], [FN, VP]]` = `[[815, 333], [397, 466]]`
+Matriz de confusão `[[VN, FP], [FN, VP]]` = `[[822, 326], [370, 493]]`
 
-**Leitura honesta destes números.** ROC-AUC de 0,80 (Modelo 1) e 0,69
+**Leitura honesta destes números.** ROC-AUC de 0,80 (Modelo 1) e 0,71
 (Modelo 2): os dois são claramente melhores que o acaso, e o Modelo 2 — o que
-ordena a fila — ainda erra com frequência.
+ordena a fila — ainda erra com frequência, porque a pergunta dele é mais
+difícil.
 
 **O teto desta carteira.** O gerador sintético embute ruído deliberado: um
 termo oculto, que representa o que nenhum cadastro registra, e o sorteio final
@@ -117,27 +125,22 @@ fórmula do gerador e todos os seus atributos (`sintetico.teto_de_desempenho`)
 chega a ROC-AUC de **0,804** na inadimplência e **0,722** na recuperabilidade;
 conhecendo também o ruído oculto, a 0,832 e 0,777.
 
-No mesmo conjunto de teste, o Modelo 1 fica a 0,002 do oráculo (diferença
-dentro do ruído de amostragem): está no teto. O Modelo 2 fica a 0,033 (IC 95%
-de 0,019 a 0,047), e a causa é o algoritmo: uma regressão logística, que tem a
-mesma forma do gerador, chega a 0,714 contra 0,718 do oráculo, enquanto o
-gradient boosting sobreajusta com 6 mil casos de treino. Não é a exclusão da
-faixa de renda: retirada do oráculo, o teto quase não muda (0,722 para 0,721),
-porque valor venal e distância ao centro carregam a mesma informação.
+No mesmo conjunto de teste, os dois modelos ficam praticamente no teto: o
+Modelo 1 a 0,002 do oráculo e o Modelo 2 a 0,004 (0,714 contra 0,718). Com o
+gradient boosting, o Modelo 2 ficava a 0,033 — foi essa medição que motivou a
+troca para regressão logística. Excluir a faixa de renda quase não custa
+desempenho: retirada do oráculo, o teto passa de 0,722 para 0,721.
 
-Um modelo acima do teto estaria usando informação do
-resultado ou do futuro — por isso `tests/test_etica.py` falha se isso
-acontecer.
-Isso é esperado e desejável num PoC cujo processo gerador embute ruído
-deliberado. Métricas próximas de 1,0 aqui indicariam vazamento de dados, não
-qualidade. Em produção, com histórico real de pagamentos, espera-se desempenho
-superior — mas a decisão de tratar o resultado como **fila de trabalho**, e não
-como veredito, permanece válida em qualquer nível de acurácia.
+Um modelo acima do teto estaria usando informação do resultado ou do futuro —
+vazamento de dados, não qualidade. Por isso `tests/test_etica.py` falha se isso
+acontecer. Com dados reais o teto é desconhecido, mas a decisão de tratar o
+resultado como **fila de trabalho**, e não como veredito, vale em qualquer
+nível de acurácia.
 
 **Métrica que mais importa.** Para o Modelo 2, o custo dos erros é assimétrico:
 um falso positivo gasta uma diligência à toa; um falso negativo abandona
-dinheiro recuperável. Com o corte padrão de 0,5, o recall é de **0,540**:
-quase metade das dívidas recuperáveis fica abaixo do corte. O pipeline de
+dinheiro recuperável. Com o corte padrão de 0,5, o recall é de **0,571**:
+mais de 4 em cada 10 dívidas recuperáveis ficam abaixo do corte. O pipeline de
 demonstração mantém 0,5; num uso real, o corte de decisão deve ser escolhido na validação
 pelo custo de cada erro, como mostra a aula da Sprint 4. A fila de cobrança não
 depende do corte — ela ordena pela probabilidade contínua.
@@ -204,41 +207,43 @@ completo, com intervalos de confiança, no [RIA](RIA.md), seção 2.
 - Paridade Demográfica: **0,3322** (limite 0,10) — reprovado
 - Igualdade de Oportunidade: **0,3251** (limite 0,10) — reprovado
 
-### Modelo 2 — recuperabilidade: **reprovado, com viés no sentido oposto**
+### Modelo 2 — recuperabilidade: **reprovado na paridade, aprovado na igualdade de oportunidade**
 
 | Grupo | n | Prevalência real | Taxa de seleção | Recall (TPR) |
 |---|---|---|---|---|
-| alta | 256 | 0,484 | 0,500 | 0,629 |
-| média | 691 | 0,450 | 0,386 | 0,540 |
-| baixa | 1.064 | 0,402 | 0,380 | 0,514 |
+| alta | 256 | 0,484 | 0,492 | 0,637 |
+| média | 691 | 0,450 | 0,371 | 0,553 |
+| baixa | 1.064 | 0,402 | 0,411 | 0,565 |
 
-- Paridade Demográfica: **0,1203** (limite 0,10) — reprovado; IC 95% de
-  0,059 a 0,194
-- Igualdade de Oportunidade: **0,1150** (limite 0,10) — reprovado; IC 95% de
-  0,036 a 0,215
+- Paridade Demográfica: **0,1217** (limite 0,10) — reprovado; IC 95% de
+  0,054 a 0,190
+- Igualdade de Oportunidade: **0,0840** (limite 0,10) — aprovado; IC 95% de
+  0,019 a 0,190
 - Os intervalos contêm 0,10: com 256 casos de renda alta no teste, a amostra
   não distingue a disparidade real do limite. O critério não muda por isso — a
   aprovação é a estimativa pontual contra o limite fixado antes.
 - Com corte calibrado por grupo (`src/fairness.py::simular_mitigacao`), a
-  disparidade na taxa de seleção cai para **0,0008**.
+  disparidade na taxa de seleção cai para **0,0019**, e a de recall fica em
+  0,069.
 
-**O achado central.** Os dois modelos são enviesados, em sentidos opostos e com
-intensidades muito diferentes. O que prediz *quem deve* sinaliza 53,5% dos
-setores de renda baixa contra 20,3% dos de renda alta — reflexo direto da
-prevalência real (0,555 contra 0,293), que qualquer classificador calibrado
-reproduz. O que prediz *de quem se recupera* favorece os setores de renda alta
-(50,0% contra 38,0%) e reconhece menos as dívidas recuperáveis dos setores
-pobres (recall de 0,514 contra 0,629). Esse viés é menor, mas passa do limite:
-a recuperação também difere entre grupos (0,484 contra 0,402), e entre os
-atributos mais importantes estão valor venal e distância ao centro, que
-funcionam como substitutos da renda.
+**O achado central.** Os dois modelos têm vieses de intensidade muito
+diferente. O que prediz *quem deve* sinaliza 53,5% dos setores de renda baixa
+contra 20,3% dos de renda alta — reflexo direto da prevalência real (0,555
+contra 0,293), que qualquer classificador calibrado reproduz. O que prediz *de
+quem se recupera* seleciona mais a faixa alta (49,2%) que a baixa (41,1%) e a
+média (37,1%): não há um gradiente por renda, e a seleção maior na faixa alta
+acompanha a recuperação real maior (0,484). A diferença passa do limite na
+paridade, mas o recall fica dentro dele. O atributo dominante é o tempo de
+inadimplência (0,175 na importância por permutação); valor venal (0,018) e
+distância ao centro (0,006) pesam pouco. Com o gradient boosting, esses
+substitutos da renda pesavam três a dez vezes mais.
 
 **Consequência prática, e é a recomendação mais importante deste documento:** o
 Modelo 1 **não deve ser usado para direcionar cobrança**. Seu uso legítimo é
 diagnóstico — dimensionar o problema, planejar campanhas de educação fiscal,
 identificar setores que precisam de política pública. Quem ordena a fila é o
-Modelo 2, **e só com o corte calibrado por grupo**: sem essa mitigação, ele
-também reprova na auditoria.
+Modelo 2, **com o corte calibrado por grupo**: sem essa mitigação, ele reprova
+na paridade demográfica.
 
 ---
 

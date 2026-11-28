@@ -265,22 +265,27 @@ Toda pergunta, ferramenta chamada e resposta fica em
 
 | | Modelo 1 — inadimplência | Modelo 2 — recuperabilidade |
 |---|---|---|
-| Acurácia | 0,768 | 0,637 |
-| Precisão | 0,756 | 0,583 |
-| Recall | 0,685 | 0,540 |
-| F1 | 0,719 | 0,561 |
-| ROC-AUC | 0,804 | 0,686 |
+| Algoritmo | gradient boosting | regressão logística |
+| Acurácia | 0,768 | 0,654 |
+| Precisão | 0,756 | 0,602 |
+| Recall | 0,685 | 0,571 |
+| F1 | 0,719 | 0,586 |
+| ROC-AUC | 0,804 | 0,714 |
+| Teto do ROC-AUC nesta carteira | 0,804 | 0,722 |
 
-O processo gerador embute ruído deliberado; métricas perto de 1,0 num PoC assim
-indicariam vazamento de dados. O Modelo 2, que ordena a fila, é o mais difícil.
+O processo gerador embute ruído deliberado, e por isso há um teto: o ROC-AUC de
+um oráculo que conhece a fórmula do gerador. Os dois modelos estão praticamente
+nele. O Modelo 2 usava gradient boosting e ficava em 0,686; a regressão
+logística chega a 0,714. Um modelo acima do teto indicaria vazamento de dados, e
+`tests/test_etica.py` falha nesse caso.
 
 ### Priorização
 
 - 8.041 contribuintes com dívida inscrita na fila (43,8% da carteira tem dívida;
   os beneficiários do IPTU Social ficam fora da fila)
 - Dívida na fila: **R$ 62,4 milhões**
-- Retorno esperado: **R$ 24,9 milhões** (39,9%)
-- Os **20% melhores casos concentram 54,9%** do retorno esperado
+- Retorno esperado: **R$ 24,9 milhões** (40,0%)
+- Os **20% melhores casos concentram 51,7%** do retorno esperado
 
 A proporção de devedores é **hipótese**: 44%, a inadimplência no IPTU de Palmas
 medida em 2018. A Sefin não publica quantos imóveis têm dívida ativa. Fontes e
@@ -291,22 +296,24 @@ escolhas da calibração no [Model Card](docs/MODEL_CARD.md), seção 5.
 | Modelo | Paridade Demográfica | Igualdade de Oportunidade | Resultado |
 |---|---|---|---|
 | 1 — inadimplência | 0,3322 | 0,3251 | **reprovado** (contra os setores pobres) |
-| 2 — recuperabilidade | 0,1203 | 0,1150 | **reprovado** (a favor dos setores ricos) |
-| 2, com corte calibrado por grupo | 0,0008 | 0,085 | aprovado |
+| 2 — recuperabilidade | 0,1217 | 0,0840 | **reprovado** na paridade (seleciona mais a faixa alta) |
+| 2, com corte calibrado por grupo | 0,0019 | 0,069 | aprovado |
 
 Limite de disparidade de 0,10: convenção do AI Fairness 360 (Bellamy et al., 2019); a regra
 dos quatro quintos da EEOC, que olha a razão entre as taxas, é a segunda
 referência. No Modelo 2 o intervalo de confiança de 95% por bootstrap vai de
-0,059 a 0,194 na paridade — contém o limite, porque o teste tem só 256 casos de
+0,054 a 0,190 na paridade — contém o limite, porque o teste tem só 256 casos de
 renda alta. O critério, fixado antes, não muda por isso.
 
-**O achado central do PoC.** Dois modelos, mesmos dados, mesmo algoritmo, vieses
-de sentido e intensidade diferentes. Perguntar *"quem provavelmente deve?"*
-produz um modelo que aprende sobre pobreza — morador de setor pobre tem 2,6×
-mais chance de ser sinalizado. Perguntar *"de quem se consegue recuperar?"*
-produz um modelo que aprende sobretudo sobre o processo de cobrança, mas ainda
-carrega a renda por substitutos como valor venal e distância ao centro. **A
-escolha da variável-alvo reduz o viés, não o elimina**: o Modelo 2 só ordena a
+**O achado central do PoC.** Duas escolhas feitas antes da auditoria mudaram o
+viés mais que qualquer ajuste depois dela. A **pergunta**: *"quem provavelmente
+deve?"* produz um modelo que aprende sobre pobreza — morador de setor pobre tem
+2,6× mais chance de ser sinalizado —, enquanto *"de quem se consegue
+recuperar?"* produz um modelo que aprende sobretudo sobre o processo de
+cobrança. E o **algoritmo**: com gradient boosting, o Modelo 2 reconstruía a
+renda por substitutos como valor venal e distância ao centro e reprovava nos
+dois testes; com regressão logística, passa na igualdade de oportunidade e
+reprova só na paridade. Nenhuma das duas elimina o viés: o Modelo 2 só ordena a
 fila com o corte calibrado por grupo. Discussão completa em
 [`docs/RIA.md`](docs/RIA.md), seção 2.
 
