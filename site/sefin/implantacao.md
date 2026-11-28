@@ -68,7 +68,12 @@ parte pela fila priorizada.
 
 Esta fase é a que responde à pergunta que realmente importa: *quanto a mais se
 recupera com o novo critério?* Sem grupo de comparação, qualquer variação pode
-ser atribuída a sazonalidade ou a outros fatores.
+ser atribuída a sazonalidade ou a outros fatores. Na simulação, o sistema
+superou a regra "maiores dívidas primeiro" por cerca de 4 pontos — uma
+diferença pequena, que só o piloto com dados reais confirma ou descarta.
+
+O piloto deve também acompanhar os débitos próximos da prescrição, que a fila
+por retorno esperado tende a deixar para o fim.
 
 *Produto: medição comparada de recuperação entre os dois critérios.*
 

@@ -22,7 +22,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
 
 import config
-from src import coleta, etl, fairness, modelo, sintetico
+from src import coleta, etl, fairness, modelo, priorizacao, sintetico
 
 
 def cabecalho(texto: str) -> None:
@@ -103,6 +103,23 @@ def main() -> int:
     print(fila.head(10)[colunas].to_string(index=False))
 
     fila.to_csv(config.DADOS / "fila_cobranca.csv", sep=";", index=False, encoding="utf-8-sig")
+
+    # A fila recupera mais que uma regra simples? E o que ela faz com a prescricao?
+    import pandas as pd
+    teste_rec = pd.read_csv(config.DADOS / "teste_recuperabilidade.csv", sep=";")
+    comparacao = priorizacao.comparar_ordenacoes(teste_rec)
+    comparacao["prescricao_na_fila"] = priorizacao.resumo_prescricao(fila)
+    print("\n  Valor de fato recuperado alcancado nos 20% primeiros da fila (teste):")
+    for chave, rotulo in priorizacao.ORDENACOES.items():
+        print(f"    {rotulo:36} {comparacao['resumo'][chave]['20pct']:.1%}")
+    dif = comparacao["diferenca_modelo_x_maiores_dividas"]
+    print(f"    modelo - maiores dividas: {dif['diferenca']:+.3f} "
+          f"(IC 95% {dif['ic_inferior']:+.3f} a {dif['ic_superior']:+.3f})")
+    for alerta, dados_alerta in comparacao["prescricao_na_fila"].items():
+        print(f"  prescricao -- {alerta}: {dados_alerta['casos']} dividas, "
+              f"R$ {dados_alerta['divida_reais']:,.2f}")
+    with open(config.DADOS / "comparacao_ordenacoes.json", "w", encoding="utf-8") as arquivo:
+        json.dump(comparacao, arquivo, ensure_ascii=False, indent=2)
 
     # ---------------- Sprint 3: explicabilidade ----------------
     cabecalho("[Sprint 3] Interpretabilidade - direito a explicacao (LGPD Art. 20)")

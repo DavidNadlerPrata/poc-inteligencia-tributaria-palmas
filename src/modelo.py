@@ -38,6 +38,7 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import FunctionTransformer, OneHotEncoder, StandardScaler
 
 import config
+import priorizacao
 
 # Grupo protegido: usado so na auditoria, nunca como preditor.
 COLUNA_PROTEGIDA = "faixa_renda_setor"
@@ -219,6 +220,9 @@ def priorizar_cobranca(dados: pd.DataFrame) -> pd.DataFrame:
     universo["faixa_recuperabilidade"] = universo["prob_recuperacao"].map(faixa_recuperabilidade)
     universo["retorno_esperado"] = (universo["valor_divida_consolidada"]
                                     * universo["prob_recuperacao"]).round(2)
+    # A ordem nao considera o prazo prescricional; o alerta torna isso visivel.
+    universo["alerta_prescricao"] = priorizacao.alerta_prescricao(
+        universo["tempo_inadimplencia_dias"])
 
     return universo.sort_values("retorno_esperado", ascending=False).reset_index(drop=True)
 

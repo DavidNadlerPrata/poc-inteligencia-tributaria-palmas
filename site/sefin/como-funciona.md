@@ -78,6 +78,14 @@ Esta seção é tão importante quanto as anteriores.
   qualquer efeito sobre o crédito tributário.
 - **Não substitui a análise jurídica.** Prescrição, nulidades e demais questões
   processuais seguem o rito normal.
+- **Não controla a prescrição.** A fila ordena pelo retorno esperado e não pelo
+  prazo de cinco anos da cobrança. Débitos antigos, que o sistema vê como pouco
+  recuperáveis, ficam no fim da fila — justamente os mais perto de prescrever.
+  Na simulação, 826 débitos (R$ 6,7 milhões) prescreveriam em até 12 meses, e só
+  84 deles estavam entre os 20% primeiros da fila. O painel marca esses casos,
+  mas o controle de prazo precisa de um fluxo próprio, com a Procuradoria.
+  **Priorizar não é dispensar:** a fila define a ordem, e nenhum débito pode ser
+  abandonado por estar no fim dela.
 - **Não prevê o comportamento de uma pessoa.** Estima a frequência com que
   débitos de perfil semelhante foram recuperados no passado. É uma afirmação
   estatística sobre um conjunto, não um juízo sobre um indivíduo.

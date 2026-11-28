@@ -35,6 +35,7 @@ import config
 import etl
 import fairness
 import modelo
+import priorizacao
 
 ATRIBUTOS = modelo.ATRIBUTOS_CATEGORICOS + modelo.ATRIBUTOS_NUMERICOS
 SETORES = [nome for nome, *_ in config.SETORES_URBANOS]
@@ -106,7 +107,7 @@ def _base() -> tuple[pd.DataFrame, int]:
         fila = modelo.priorizar_cobranca(universo)
         fila["posicao_na_fila"] = np.arange(1, len(fila) + 1)
         colunas = ["id_contribuinte", "prob_recuperacao", "faixa_recuperabilidade",
-                   "retorno_esperado", "posicao_na_fila"]
+                   "retorno_esperado", "posicao_na_fila", "alerta_prescricao"]
         return universo.merge(fila[colunas], on="id_contribuinte", how="left"), excluidos
     return _memo("base", calcular)
 
@@ -164,6 +165,11 @@ def resumo_carteira() -> dict:
              "divida_reais": _reais(linha.divida_reais),
              "retorno_esperado_reais": _reais(linha.retorno_esperado_reais)}
             for linha in por_faixa.itertuples()],
+        "prescricao": priorizacao.resumo_prescricao(fila),
+        "sobre_prescricao": ("A fila ordena por retorno esperado e nao considera o prazo de "
+                             "5 anos (CTN, art. 174). O alerta usa o tempo de inadimplencia "
+                             "como aproximacao e nao conhece causas de interrupcao; a "
+                             "situacao de cada divida e decisao da Procuradoria."),
     }
 
 
@@ -190,7 +196,8 @@ def fila_cobranca(limite: int = 10, setor_urbano: str | None = None,
              "dias_de_inadimplencia": int(linha.tempo_inadimplencia_dias),
              "prob_recuperacao": _prob(linha.prob_recuperacao),
              "faixa_recuperabilidade": linha.faixa_recuperabilidade,
-             "retorno_esperado_reais": _reais(linha.retorno_esperado)}
+             "retorno_esperado_reais": _reais(linha.retorno_esperado),
+             "alerta_prescricao": linha.alerta_prescricao or None}
             for linha in fila.head(limite).itertuples()],
         "observacao": "A fila ordena o trabalho do servidor; nao e decisao de cobranca.",
     }
@@ -330,7 +337,20 @@ def desempenho_modelos() -> dict:
         "como_ler": ("ROC-AUC 0,5 e o acaso e 1,0 e perfeito. Valores moderados sao esperados "
                      "numa carteira com ruido deliberado; valores perto de 1,0 indicariam "
                      "vazamento de dados."),
+        "fila_do_modelo_x_regras_simples": _comparacao_salva(),
     }
+
+
+def _comparacao_salva() -> dict | None:
+    """Valor de fato recuperado por ordenacao, gravado pelo pipeline (sem as curvas)."""
+    caminho = config.DADOS / "comparacao_ordenacoes.json"
+    if not caminho.exists():
+        return None
+    salva = json.loads(caminho.read_text(encoding="utf-8"))
+    return {"pergunta": "Que fracao do valor de fato recuperado cada fila alcanca?",
+            "premissa": salva["premissa"], "ordenacoes": salva["rotulos"],
+            "resumo": salva["resumo"],
+            "diferenca_modelo_x_maiores_dividas": salva["diferenca_modelo_x_maiores_dividas"]}
 
 
 # --------------------------------------------------------------------------
@@ -363,12 +383,14 @@ FERRAMENTAS: dict[str, Ferramenta] = {f.nome: f for f in [
     Ferramenta(
         "resumo_carteira",
         "Panorama da carteira: tamanho do universo de cobranca, divida ativa total, retorno "
-        "esperado, taxa de inadimplencia e distribuicao por faixa de recuperabilidade.",
+        "esperado, taxa de inadimplencia, distribuicao por faixa de recuperabilidade e "
+        "dividas com alerta de prescricao.",
         _objeto(), resumo_carteira),
     Ferramenta(
         "fila_cobranca",
         "Fila de cobranca ordenada por retorno esperado (divida x probabilidade de "
-        "recuperacao). Aceita filtro por setor urbano e por faixa de recuperabilidade.",
+        "recuperacao), com alerta de prescricao por caso. Aceita filtro por setor urbano "
+        "e por faixa de recuperabilidade.",
         _objeto({
             "limite": {"type": "integer", "minimum": 1, "maximum": LIMITE_MAXIMO_FILA,
                        "description": "Quantos casos listar (padrao 10)."},
@@ -401,8 +423,9 @@ FERRAMENTAS: dict[str, Ferramenta] = {f.nome: f for f in [
         _objeto({"modelo_avaliado": _MODELO_AVALIADO}), auditoria_equidade),
     Ferramenta(
         "desempenho_modelos",
-        "Metricas de teste dos dois modelos: acuracia, precisao, recall, F1, ROC-AUC e "
-        "matriz de confusao.",
+        "Metricas de teste dos dois modelos (acuracia, precisao, recall, F1, ROC-AUC, "
+        "matriz de confusao) e a comparacao da fila do modelo com regras simples, como "
+        "'maiores dividas primeiro', pelo valor de fato recuperado.",
         _objeto(), desempenho_modelos),
 ]}
 

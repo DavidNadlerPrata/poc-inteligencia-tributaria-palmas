@@ -79,7 +79,7 @@ paridade e calibração ao mesmo tempo, está no
 <div class="cartoes">
 <div class="cartao"><div class="valor">17.507</div><div class="rotulo">registros reais coletados da API da Prefeitura</div></div>
 <div class="cartao"><div class="valor">51,7%</div><div class="rotulo">do retorno esperado concentrado nos 20% melhores casos</div></div>
-<div class="cartao"><div class="valor">208</div><div class="rotulo">testes automatizados, 94% de cobertura</div></div>
+<div class="cartao"><div class="valor">222</div><div class="rotulo">testes automatizados, 95% de cobertura</div></div>
 <div class="cartao"><div class="valor">0,0019</div><div class="rotulo">disparidade após mitigação (era 0,1217)</div></div>
 </div>
 
@@ -110,7 +110,33 @@ imóveis com dívida (44%) é uma **hipótese** baseada na inadimplência medida
 A fila é ordenada por **retorno esperado** — o produto entre o valor da dívida e
 a probabilidade de recuperação. Ordenar apenas pela probabilidade privilegiaria
 dívidas pequenas e fáceis; apenas pelo valor, dívidas grandes e incobráveis. O
-produto equilibra os dois, e é a métrica que a Sefin usaria na prática.
+produto equilibra os dois.
+
+**A fila do modelo é melhor que uma regra simples?** Nas dívidas do conjunto
+de teste, trabalhar os 20% primeiros de cada fila alcança esta fração do valor
+**de fato recuperado**:
+
+| Fila ordenada por… | 20% primeiros | 50% primeiros |
+|---|---|---|
+| Modelo 2 (dívida × probabilidade) | **47,4%** | 81,3% |
+| Maiores dívidas primeiro | 43,8% | 75,0% |
+| Mais recentes primeiro | 31,5% | 67,1% |
+| Só a probabilidade do modelo | 24,7% | 61,4% |
+| Ordem aleatória | 20,0% | 50,0% |
+
+O modelo ganha da regra "maiores dívidas primeiro" por 3,7 pontos percentuais
+(IC 95% de 0,5 a 7,2): a diferença é real, mas pequena perto da que separa as
+duas da ordem aleatória. Quase todo o ganho vem de ordenar pelo valor.
+
+**Prescrição.** A fila ordena por retorno esperado e não considera o prazo de
+cinco anos da ação de cobrança (CTN, art. 174). Com isso, 826 dívidas
+(R$ 6,7 mi) que prescrevem em até 12 meses ficam espalhadas pela fila — só 84
+nos 20% primeiros, com posição mediana em 61% da fila —, e outras 1.536
+(R$ 12,7 mi), com 5 anos ou mais, ficam no fim. O painel e o assistente marcam
+esses casos. O alerta usa o tempo de inadimplência como
+aproximação e não conhece as causas que interrompem a prescrição (parcelamento,
+protesto, despacho de citação): ele indica o que conferir, e a situação de cada
+dívida é decisão da Procuradoria.
 
 ---
 

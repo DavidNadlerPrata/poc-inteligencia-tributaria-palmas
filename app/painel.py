@@ -30,6 +30,7 @@ sys.path.insert(0, str(RAIZ / "src"))
 
 import assistente as assistente_ia  # noqa: E402
 import config  # noqa: E402
+import priorizacao  # noqa: E402
 from app import tema  # noqa: E402
 
 st.set_page_config(page_title="Inteligencia Tributaria | Palmas-TO",
@@ -42,7 +43,7 @@ st.set_page_config(page_title="Inteligencia Tributaria | Palmas-TO",
 ARTEFATOS = [config.BANCO, config.METRICAS, config.CSV_ARRECADACAO,
              config.DADOS / "fila_cobranca.csv", config.DADOS / "auditoria_fairness.json",
              config.DADOS / "mitigacao_fairness.csv", config.DADOS / "importancia_atributos.csv",
-             config.DADOS / "teto_desempenho.json"]
+             config.DADOS / "teto_desempenho.json", config.DADOS / "comparacao_ordenacoes.json"]
 
 
 def versao_dos_artefatos() -> tuple:
@@ -68,6 +69,9 @@ def carregar(versao: tuple):  # versao so compoe a chave do cache
     caminho_fila = config.DADOS / "fila_cobranca.csv"
     if caminho_fila.exists():
         fila = pd.read_csv(caminho_fila, sep=";")
+        # Recalculado aqui para funcionar tambem com filas geradas antes do alerta.
+        fila["alerta_prescricao"] = priorizacao.alerta_prescricao(
+            fila["tempo_inadimplencia_dias"])
 
     metricas = {}
     if config.METRICAS.exists():
@@ -97,9 +101,14 @@ def carregar(versao: tuple):  # versao so compoe a chave do cache
     if caminho_teto.exists():
         teto = json.loads(caminho_teto.read_text(encoding="utf-8"))
 
+    comparacao = {}
+    caminho_comparacao = config.DADOS / "comparacao_ordenacoes.json"
+    if caminho_comparacao.exists():
+        comparacao = json.loads(caminho_comparacao.read_text(encoding="utf-8"))
+
     return {"dados": dados, "fila": fila, "metricas": metricas, "auditoria": auditoria,
             "mitigacao": mitigacao, "importancia": importancia, "arrecadacao": arrecadacao,
-            "teto": teto}
+            "teto": teto, "comparacao": comparacao}
 
 
 def modo_escuro() -> bool:
@@ -261,18 +270,44 @@ with aba_cobranca:
                    "Ordenar só pela probabilidade privilegiaria dívidas pequenas; só pelo "
                    "valor, dívidas incobráveis. O produto equilibra os dois.")
 
+        # --- Prescricao: a ordem por retorno esperado nao considera o prazo ---
+        prescricao = priorizacao.resumo_prescricao(fila)
+        proxima = prescricao[priorizacao.ALERTA_PROXIMA]
+        vencida = prescricao[priorizacao.ALERTA_VENCIDA]
+        if proxima["casos"] or vencida["casos"]:
+            # "R$" duas vezes na mesma frase vira formula no Markdown: escapar o cifrao.
+            valor_proxima = tema.compacto(proxima["divida_reais"]).replace("$", r"\$")
+            valor_vencida = tema.compacto(vencida["divida_reais"]).replace("$", r"\$")
+            st.warning(
+                f"**Prescrição — a fila não considera o prazo de 5 anos (CTN, art. 174).** "
+                f"{tema.milhar(proxima['casos'])} dívidas "
+                f"({valor_proxima}) prescrevem em até 12 meses, e só "
+                f"{tema.milhar(proxima['no_topo_20pct'])} delas estão entre os 20% primeiros "
+                f"da fila — a posição mediana é "
+                f"{tema.percentual(proxima['posicao_mediana_na_fila'], 0)} da fila. Outras "
+                f"{tema.milhar(vencida['casos'])} ({valor_vencida}) "
+                f"têm 5 anos ou mais: confira se a prescrição foi interrompida. Esses casos "
+                f"precisam de controle próprio, fora da ordem por retorno esperado.")
+            st.caption("O alerta usa o tempo de inadimplência como aproximação do prazo e "
+                       "não conhece as causas de interrupção (parcelamento, protesto, "
+                       "despacho de citação). A situação de cada dívida é decisão da "
+                       "Procuradoria.")
+
         f1, f2, f3 = st.columns([2, 2, 1])
         setores = ["(todos)"] + sorted(fila["setor_urbano"].unique().tolist())
         setor_escolhido = f1.selectbox("Setor urbano", setores)
         faixas = f2.multiselect("Faixa de recuperabilidade", tema.ORDEM_FAIXAS,
                                 default=tema.ORDEM_FAIXAS, format_func=tema.rotulo_faixa)
         quantidade = f3.number_input("Exibir", 10, 500, 25, step=5)
+        so_prescricao = st.checkbox("Só dívidas com alerta de prescrição")
 
         filtrada = fila.copy()
         if setor_escolhido != "(todos)":
             filtrada = filtrada[filtrada["setor_urbano"] == setor_escolhido]
         if faixas:
             filtrada = filtrada[filtrada["faixa_recuperabilidade"].isin(faixas)]
+        if so_prescricao:
+            filtrada = filtrada[filtrada["alerta_prescricao"] != ""]
 
         m1, m2, m3 = st.columns(3)
         m1.metric("Casos selecionados", f"{len(filtrada):,}".replace(",", "."))
@@ -329,7 +364,7 @@ with aba_cobranca:
         st.markdown("**Fila priorizada**")
         colunas = ["setor_urbano", "tipo_imovel", "valor_divida_consolidada",
                    "tempo_inadimplencia_dias", "prob_recuperacao",
-                   "faixa_recuperabilidade", "retorno_esperado"]
+                   "faixa_recuperabilidade", "retorno_esperado", "alerta_prescricao"]
         exibida = filtrada.head(int(quantidade))[colunas]
         st.dataframe(
             exibida.assign(faixa_recuperabilidade=exibida["faixa_recuperabilidade"]
@@ -344,9 +379,58 @@ with aba_cobranca:
                     "P(recuperação)", format="%.1f%%", min_value=0, max_value=1),
                 "faixa_recuperabilidade": "Faixa",
                 "retorno_esperado": st.column_config.NumberColumn("Retorno esperado", format="R$ %.2f"),
+                "alerta_prescricao": "Prescrição",
             })
         st.caption("Beneficiários do IPTU Social já foram excluídos desta fila, "
                    "conforme a seção 11 do plano de ensino.")
+
+        # --- A fila do modelo e melhor que uma regra simples? ---
+        comparacao = pacote["comparacao"]
+        if comparacao:
+            st.divider()
+            st.markdown("### A fila do modelo recupera mais que uma regra simples?")
+            st.caption(f"Dívidas do conjunto de teste ({tema.milhar(comparacao['n_casos'])} "
+                       "casos que o modelo não viu no treino), ordenadas por cada critério. A "
+                       "curva mostra quanto do valor **de fato recuperado** cada fila alcança "
+                       "conforme a equipe avança. Uma dívida recuperada conta pelo valor "
+                       "inteiro.")
+            curvas = pd.DataFrame(comparacao["curvas"])
+            estilos = {"modelo": (P["categorico"][0], "solid", 3),
+                       "maiores_dividas": (P["categorico"][1], "solid", 2),
+                       "mais_recentes": (P["categorico"][2], "dash", 2),
+                       "probabilidade": (P["tinta_muted"], "dot", 2)}
+            figura = go.Figure()
+            for chave, rotulo in comparacao["rotulos"].items():
+                cor, traco, largura = estilos[chave]
+                figura.add_trace(go.Scatter(
+                    x=curvas["fracao_casos"], y=curvas[chave], mode="lines", name=rotulo,
+                    line=dict(color=cor, dash=traco, width=largura),
+                    hovertemplate=f"{rotulo}<br>%{{x:.0%}} dos casos → "
+                                  "%{y:.1%} do valor recuperado<extra></extra>"))
+            figura.add_trace(go.Scatter(
+                x=curvas["fracao_casos"], y=curvas["aleatoria"], mode="lines",
+                name="Ordem aleatória", line=dict(color=P["eixo"], dash="dot", width=1),
+                hoverinfo="skip"))
+            figura.update_xaxes(title="% dos casos trabalhados", tickformat=".0%")
+            figura.update_yaxes(title="% do valor de fato recuperado", tickformat=".0%")
+            st.plotly_chart(tema.aplicar_layout(figura, P, 360, mostrar_legenda=True),
+                            width="stretch")
+
+            resumo, dif = comparacao["resumo"], comparacao["diferenca_modelo_x_maiores_dividas"]
+
+            def pontos(fracao: float) -> str:
+                return f"{fracao * 100:.1f}".replace(".", ",")
+            st.markdown(
+                f"Trabalhando os **20% primeiros** de cada fila: o Modelo 2 alcança "
+                f"**{tema.percentual(resumo['modelo']['20pct'])}** do valor recuperado; "
+                f"\"maiores dívidas primeiro\", "
+                f"**{tema.percentual(resumo['maiores_dividas']['20pct'])}**; a ordem "
+                f"aleatória, 20%. O modelo ganha da regra simples por "
+                f"{pontos(dif['diferenca'])} pontos percentuais (IC 95% de "
+                f"{pontos(dif['ic_inferior'])} a {pontos(dif['ic_superior'])}): "
+                "a diferença é real, mas pequena perto da que separa as duas da ordem "
+                "aleatória. Quase todo o ganho vem de ordenar pelo valor; o modelo "
+                "acrescenta um ajuste por cima.")
 
 
 # ==========================================================================

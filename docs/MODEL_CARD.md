@@ -63,6 +63,8 @@ atribuição de cobrança, sob supervisão da Procuradoria.
 - Qualquer uso sobre beneficiários do IPTU Social, que são excluídos por
   construção.
 - Transferir o modelo para outro município sem novo treino e nova auditoria.
+- Substituir o controle de prescrição. A fila não considera o prazo de cinco
+  anos da cobrança (CTN, art. 174); o alerta do painel indica o que conferir.
 
 ---
 
@@ -144,6 +146,22 @@ mais de 4 em cada 10 dívidas recuperáveis ficam abaixo do corte. O pipeline de
 demonstração mantém 0,5; num uso real, o corte de decisão deve ser escolhido na validação
 pelo custo de cada erro, como mostra a aula da Sprint 4. A fila de cobrança não
 depende do corte — ela ordena pela probabilidade contínua.
+
+**A fila do modelo é melhor que uma regra simples?** Nas dívidas do conjunto
+de teste, trabalhar os 20% primeiros de cada fila alcança esta fração do valor
+**de fato recuperado**:
+
+| Fila ordenada por… | 20% primeiros | 50% primeiros |
+|---|---|---|
+| Modelo 2 (dívida × probabilidade) | **47,4%** | 81,3% |
+| Maiores dívidas primeiro | 43,8% | 75,0% |
+| Mais recentes primeiro | 31,5% | 67,1% |
+| Só a probabilidade do modelo | 24,7% | 61,4% |
+| Ordem aleatória | 20,0% | 50,0% |
+
+O modelo ganha da regra "maiores dívidas primeiro" por 3,7 pontos percentuais
+(IC 95% de 0,5 a 7,2): a diferença é real, mas pequena perto da que separa as
+duas da ordem aleatória. Quase todo o ganho vem de ordenar pelo valor.
 
 ---
 

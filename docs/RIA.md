@@ -288,9 +288,13 @@ explicação que só a equipe entende não cumpre o Art. 20.
 
 ### 4.1 Impactos positivos esperados
 
-- **Eficiência da máquina pública.** Os 20% melhores casos da fila concentram
-  **51,7%** do retorno esperado. Direcionar esforço por essa ordenação aumenta a
-  recuperação sem ampliar a equipe.
+- **Eficiência da máquina pública.** Nas dívidas do conjunto de teste,
+  trabalhar os 20% primeiros da fila alcança **47,4%** do valor de fato
+  recuperado, contra 20% de uma ordem aleatória. A regra simples "maiores
+  dívidas primeiro" alcança 43,8%: o modelo acrescenta 3,7 pontos percentuais
+  (IC 95% de 0,5 a 7,2). Quase todo o ganho vem de ordenar pelo valor — e é
+  com essa regra simples, não com a ordem aleatória, que a Sefin deve comparar
+  o sistema antes de adotá-lo.
 - **Recursos para política pública.** Dívida ativa recuperada financia saúde,
   educação e infraestrutura. Não cobrar quem pode pagar transfere o custo para
   quem já paga.
@@ -312,6 +316,7 @@ explicação que só a equipe entende não cumpre o Art. 20.
 | Contribuinte não entender a classificação | Média | Explicação em linguagem acessível; canal de contestação |
 | Falsa sensação de objetividade técnica | Média | Limitações declaradas no painel e nesta seção |
 | Vazamento de dados fiscais | **Alta** (em produção) | Pseudonimização, controle de acesso, retenção limitada |
+| Deixar dívidas prescreverem por estarem no fim da fila | **Alta** | Alerta de prescrição no painel e no assistente; controle de prazo fora da ordem por retorno esperado |
 
 ### 4.3 Recomendações de uso responsável
 
@@ -329,6 +334,14 @@ explicação que só a equipe entende não cumpre o Art. 20.
    qualquer ato restritivo de direitos.
 8. **Descontinuar** se a auditoria apontar disparidade crescente sem mitigação
    viável. Um sistema que não pode ser corrigido deve ser desligado.
+9. **Controlar a prescrição fora da fila.** Priorizar não é dispensar: a fila
+   define a ordem, e nenhuma dívida pode ser abandonada por ficar no fim dela.
+   Dívidas próximas dos cinco anos (CTN, art. 174) precisam de um fluxo próprio,
+   validado pela Procuradoria.
+10. **Comparar com a regra simples antes de adotar.** Com dados reais, medir se
+    a fila do modelo recupera mais que "maiores dívidas primeiro". Se a
+    diferença for desprezível, a regra simples é mais fácil de explicar e de
+    auditar.
 
 ### 4.4 Conclusão
 

@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/DavidNadlerPrata/poc-inteligencia-tributaria-palmas/actions/workflows/ci.yml/badge.svg)](https://github.com/DavidNadlerPrata/poc-inteligencia-tributaria-palmas/actions/workflows/ci.yml)
 [![Python](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-blue)](https://www.python.org/)
-[![Testes](https://img.shields.io/badge/testes-208-brightgreen)](tests/)
+[![Testes](https://img.shields.io/badge/testes-222-brightgreen)](tests/)
 [![Cobertura](https://img.shields.io/badge/cobertura-90%25-brightgreen)](tests/)
 
 ## Publicações
@@ -237,6 +237,7 @@ Toda pergunta, ferramenta chamada e resposta fica em
 | `src/etl.py` | Pipeline ETL, DDL do banco e visão analítica |
 | `src/modelo.py` | Treino dos dois modelos, fila de cobrança, interpretabilidade |
 | `src/fairness.py` | Paridade demográfica, igualdade de oportunidade, mitigação |
+| `src/priorizacao.py` | Comparação da fila com regras simples e alerta de prescrição (CTN, art. 174) |
 | `app/painel.py` | MVP — painel Streamlit de seis abas, incluindo o assistente de IA |
 | `src/ferramentas.py` | **Ferramentas do assistente** — funções somente leitura que o agente pode chamar |
 | `src/assistente.py` | **Agente de IA** — laço modelo ↔ ferramentas via OpenRouter, com registro de auditoria |
@@ -244,7 +245,7 @@ Toda pergunta, ferramenta chamada e resposta fica em
 | `app/tema.py` | Paleta validada e enxoval dos gráficos |
 | `notebooks/eda_sprint2.ipynb` | **Relatório de EDA da Sprint 2**, executado |
 | `notebooks/gerar_eda.py` | Script que gera o notebook (diff legível no Git) |
-| `tests/` | Suíte com 208 testes — `test_etica.py` é o mais importante |
+| `tests/` | Suíte com 222 testes — `test_etica.py` é o mais importante |
 | `data/carteira_contribuintes.csv` | **Carteira sintética versionada** — 20.000 registros, pronta para abrir |
 | `tests/fixtures/` | Amostra de dados reais para o CI rodar sem acessar a API |
 | `.github/workflows/ci.yml` | Integração contínua (GitHub Actions) |
@@ -285,7 +286,32 @@ logística chega a 0,714. Um modelo acima do teto indicaria vazamento de dados, 
   os beneficiários do IPTU Social ficam fora da fila)
 - Dívida na fila: **R$ 62,4 milhões**
 - Retorno esperado: **R$ 24,9 milhões** (40,0%)
-- Os **20% melhores casos concentram 51,7%** do retorno esperado
+
+**A fila do modelo é melhor que uma regra simples?** Nas dívidas do conjunto
+de teste, trabalhar os 20% primeiros de cada fila alcança esta fração do valor
+**de fato recuperado**:
+
+| Fila ordenada por… | 20% primeiros | 50% primeiros |
+|---|---|---|
+| Modelo 2 (dívida × probabilidade) | **47,4%** | 81,3% |
+| Maiores dívidas primeiro | 43,8% | 75,0% |
+| Mais recentes primeiro | 31,5% | 67,1% |
+| Só a probabilidade do modelo | 24,7% | 61,4% |
+| Ordem aleatória | 20,0% | 50,0% |
+
+O modelo ganha da regra "maiores dívidas primeiro" por 3,7 pontos percentuais
+(IC 95% de 0,5 a 7,2): a diferença é real, mas pequena perto da que separa as
+duas da ordem aleatória. Quase todo o ganho vem de ordenar pelo valor.
+
+**Prescrição.** A fila ordena por retorno esperado e não considera o prazo de
+cinco anos da ação de cobrança (CTN, art. 174). Com isso, 826 dívidas
+(R$ 6,7 mi) que prescrevem em até 12 meses ficam espalhadas pela fila — só 84
+nos 20% primeiros, com posição mediana em 61% da fila —, e outras 1.536
+(R$ 12,7 mi), com 5 anos ou mais, ficam no fim. O painel e o assistente marcam
+esses casos (`src/priorizacao.py`). O alerta usa o tempo de inadimplência como
+aproximação e não conhece as causas que interrompem a prescrição (parcelamento,
+protesto, despacho de citação): ele indica o que conferir, e a situação de cada
+dívida é decisão da Procuradoria.
 
 A proporção de devedores é **hipótese**: 44%, a inadimplência no IPTU de Palmas
 medida em 2018. A Sefin não publica quantos imóveis têm dívida ativa. Fontes e
@@ -332,7 +358,7 @@ fila com o corte calibrado por grupo. Discussão completa em
 ## Testes
 
 ```bash
-python -m pytest          # 208 testes, ~1 min
+python -m pytest          # 222 testes, ~1 min
 ```
 
 | Arquivo | O que cobre |
@@ -343,6 +369,7 @@ python -m pytest          # 208 testes, ~1 min
 | `tests/test_modelo_coleta.py` | Métricas dos modelos, interpretabilidade, retry e paginação da API (com dublês, sem rede) |
 | `tests/test_ferramentas.py` | Ferramentas do assistente: nenhuma saída cita beneficiário do IPTU Social, banco somente leitura, validação de argumentos, coerência com a fila do pipeline |
 | `tests/test_assistente.py` | Laço do agente com o modelo substituído por roteiro: execução de ferramentas, erros, limite de passos, histórico, auditoria, cliente HTTP |
+| `tests/test_priorizacao.py` | Alerta de prescrição nas fronteiras de 4 e 5 anos, comparação de filas contra casos calculados à mão, bootstrap da diferença |
 
 `test_etica.py` existe porque o Model Card afirma que a exclusão do IPTU Social
 deve ser *"verificada por teste automatizado, não por disciplina de quem opera"*.
@@ -351,7 +378,7 @@ exclusão do grupo protegido, o filtro da fila e a fórmula do retorno esperado 
 em cada caso os testes correspondentes falharam, confirmando que detectam
 regressão real e não apenas acompanham o código.
 
-Cobertura atual: **94%** das linhas de `src/`.
+Cobertura atual: **95%** das linhas de `src/`.
 
 ## Integração contínua
 

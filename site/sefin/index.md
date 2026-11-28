@@ -66,6 +66,23 @@ Em termos operacionais: se a equipe consegue trabalhar bem um quinto da
 carteira por ciclo, a diferença entre escolher esse quinto ao acaso e escolhê-lo
 pelo retorno esperado é de **duas vezes e meia** no resultado.
 
+### Comparado com uma regra simples
+
+A comparação que importa não é com o acaso, e sim com o que a equipe faria sem
+o sistema — por exemplo, cobrar primeiro as maiores dívidas. Medimos isso com o
+valor **de fato recuperado** em dívidas que o sistema não usou no aprendizado:
+
+| Trabalhando os 20% primeiros casos de cada fila | Valor recuperado alcançado |
+|---|---|
+| Fila do sistema | **47%** |
+| Maiores dívidas primeiro | 44% |
+| Ordem aleatória | 20% |
+
+O sistema é melhor que a regra simples, mas por pouco: cerca de 4 pontos.
+Quase todo o ganho vem de priorizar pelo valor. Por isso o piloto proposto
+compara o sistema com o critério que a equipe já usa — se a diferença for
+pequena também nos dados reais, uma regra simples pode bastar.
+
 <div class="aviso">
 <p><strong>Estes percentuais vêm de uma simulação, não de dados reais de contribuintes.</strong></p>
 <p>A prova de conceito foi construída sobre uma carteira simulada, calibrada
