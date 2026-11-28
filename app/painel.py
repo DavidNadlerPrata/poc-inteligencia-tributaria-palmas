@@ -163,7 +163,8 @@ with aba_geral:
         c4.metric("Retorno esperado", tema.compacto(retorno),
                   f"{tema.percentual(retorno / divida_fila)} da dívida na fila", **sem_seta,
                   help="Soma, na fila de cobrança, de dívida × probabilidade de "
-                       "recuperação em 12 meses estimada pelo modelo.")
+                       "recuperação estimada pelo Modelo 2, que responde: "
+                       f"\"{tema.MODELOS['recuperabilidade']['pergunta']}\"")
 
     st.divider()
     col_esq, col_dir = st.columns(2)
@@ -255,6 +256,7 @@ with aba_cobranca:
         st.warning("Fila não gerada. Rode `python executar_poc.py`.")
     else:
         st.markdown("### Priorização por retorno esperado")
+        st.markdown(tema.pergunta_do_modelo("recuperabilidade"))
         st.caption("retorno esperado = valor da dívida × probabilidade de recuperação. "
                    "Ordenar só pela probabilidade privilegiaria dívidas pequenas; só pelo "
                    "valor, dívidas incobráveis. O produto equilibra os dois.")
@@ -395,8 +397,10 @@ with aba_contribuinte:
             modelo_inad = joblib.load(config.MODELO_INADIMPLENCIA)
             prob_inad = float(modelo_inad.predict_proba(entrada)[0, 1])
 
+            st.markdown(tema.pergunta_do_modelo("inadimplencia"))
             st.metric("Probabilidade de inadimplência no próximo exercício", tema.percentual(prob_inad))
 
+            st.markdown(tema.pergunta_do_modelo("recuperabilidade"))
             if divida > 0:
                 modelo_rec = joblib.load(config.MODELO_RECUPERABILIDADE)
                 prob_rec = float(modelo_rec.predict_proba(entrada)[0, 1])
@@ -440,9 +444,10 @@ with aba_equidade:
     else:
         escolha = st.radio("Modelo auditado", ["recuperabilidade", "inadimplencia"],
                            horizontal=True,
-                           format_func=lambda x: ("Modelo 2 — recuperabilidade"
-                                                  if x == "recuperabilidade"
-                                                  else "Modelo 1 — inadimplência"))
+                           format_func=lambda x: tema.MODELOS[x]["nome"])
+        st.markdown(tema.pergunta_do_modelo(escolha))
+        st.caption(f"{tema.MODELOS[escolha]['uso']} Na auditoria, um caso \"selecionado\" é "
+                   f"um caso {tema.MODELOS[escolha]['selecionado']}.")
         bloco = auditoria[escolha]
         por_grupo = tema.ordenar_faixas(pd.DataFrame(bloco["por_grupo"]))
         dp = bloco["paridade_demografica"]
@@ -549,6 +554,8 @@ estrutura de colunas de um cadastro imobiliário municipal.
     if metricas:
         st.divider()
         st.markdown("### Desempenho dos modelos")
+        for chave in ("inadimplencia", "recuperabilidade"):
+            st.markdown(f"- {tema.pergunta_do_modelo(chave)} {tema.MODELOS[chave]['uso']}")
         teto = pacote["teto"]
 
         def decimal(valor) -> str:
@@ -558,7 +565,7 @@ estrutura de colunas de um cadastro imobiliário municipal.
         for nome, bloco in metricas.items():
             alcancavel = teto.get(nome, {}).get("alcancavel", {}).get("roc_auc")
             linhas.append({
-                "Modelo": ("Inadimplência" if nome == "inadimplencia" else "Recuperabilidade"),
+                "Modelo": tema.MODELOS[nome]["nome"],
                 "Acurácia": decimal(bloco["acuracia"]), "Precisão": decimal(bloco["precisao"]),
                 "Recall": decimal(bloco["recall"]), "F1": decimal(bloco["f1"]),
                 "ROC-AUC": decimal(bloco["roc_auc"]),

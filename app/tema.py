@@ -102,6 +102,31 @@ def compacto(valor: float) -> str:
     return moeda(valor)
 
 
+# A pergunta que cada modelo responde, escrita uma vez e usada em todo o painel.
+# "Selecionado" e o que a previsao 1 significa -- e o que a auditoria conta.
+MODELOS = {
+    "inadimplencia": {
+        "nome": "Modelo 1 — inadimplência",
+        "pergunta": "Este contribuinte vai deixar de pagar o IPTU do próximo exercício?",
+        "uso": "Uso diagnóstico: dimensionar o problema e planejar educação fiscal. "
+               "Não direciona cobrança.",
+        "selecionado": "previsto como inadimplente",
+    },
+    "recuperabilidade": {
+        "nome": "Modelo 2 — recuperabilidade",
+        "pergunta": "Esta dívida já inscrita será recuperada nos próximos 12 meses?",
+        "uso": "Ordena a fila de cobrança, junto com o valor da dívida.",
+        "selecionado": "previsto como recuperável, o que leva a dívida para o alto da fila",
+    },
+}
+
+
+def pergunta_do_modelo(chave: str) -> str:
+    """Linha pronta para o painel: nome do modelo e a pergunta, em destaque."""
+    modelo = MODELOS[chave]
+    return f"**{modelo['nome']}** responde: *{modelo['pergunta']}*"
+
+
 # Faixas (de renda do setor e de recuperabilidade) sao ordinais: aparecem sempre
 # de cima para baixo, e nunca em ordem alfabetica. Os dados guardam "media" sem
 # acento; o acento entra so na exibicao.
