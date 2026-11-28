@@ -68,9 +68,9 @@ qualquer evolução do sistema, e verificada por teste automatizado.
 ### 2.1 Métricas aplicadas
 
 Grupo protegido: **faixa de renda predominante do setor urbano** (baixa, média,
-alta). Limiar de alerta: **0,10** de diferença, fixado antes da auditoria.
+alta). Limite de disparidade: **0,10** de diferença, fixado antes da auditoria.
 
-**De onde vem o limiar.** O 0,10 é a convenção do AI Fairness 360 (Bellamy et
+**De onde vem o limite.** O 0,10 é a convenção do AI Fairness 360 (Bellamy et
 al., 2019), que considera justa uma diferença de paridade entre −0,1 e 0,1. A
 referência jurídica mais antiga é a regra dos quatro quintos da EEOC (1978),
 que olha a razão entre as taxas de seleção e pede ao menos 0,8 — e que Barocas,
@@ -127,9 +127,9 @@ intervalo de confiança de 95%, por bootstrap dentro de cada grupo
 | 2 — Igualdade de Oportunidade | 0,1150 | 0,036 a 0,215 | 68% |
 
 O Modelo 1 reprova sem ambiguidade. No Modelo 2, o intervalo contém 0,10: a
-amostra não permite afirmar que a disparidade real passa do limiar — nem que
+amostra não permite afirmar que a disparidade real passa do limite — nem que
 fica abaixo dele, já que o intervalo chega a 0,19. Isso **não muda o
-resultado**: a aprovação é a estimativa pontual contra o limiar fixado antes da
+resultado**: a aprovação é a estimativa pontual contra o limite fixado antes da
 auditoria, e trocar o critério depois de ver o número seria escolher a régua
 pelo resultado. O que o intervalo mostra é que a decisão de aplicar a
 mitigação deve valer mesmo sob incerteza, e que a auditoria com mais dados é
@@ -182,28 +182,28 @@ exclusivamente o Modelo 2. O Modelo 1 fica restrito a uso diagnóstico
 É a mitigação mais eficaz porque elimina o dano na origem, em vez de tentar
 corrigi-lo depois.
 
-**Decisão 2 — limiar calibrado por grupo no Modelo 2, obrigatório.** Sem ele, o
+**Decisão 2 — corte calibrado por grupo no Modelo 2, obrigatório.** Sem ele, o
 Modelo 2 reprova na auditoria; por isso a mitigação deixa de ser opcional.
 Implementada em `src/fairness.py::simular_mitigacao`, seguindo o
 pós-processamento de Hardt, Price e Srebro (2016):
 
-| Grupo | Limiar calibrado | Taxa de seleção antes | Depois | Recall depois |
+| Grupo | Corte calibrado | Taxa de seleção antes | Depois | Recall depois |
 |---|---|---|---|---|
 | alta | 0,5815 | 0,500 | 0,398 | 0,468 |
 | média | 0,4957 | 0,386 | 0,398 | 0,553 |
 | baixa | 0,4919 | 0,380 | 0,398 | 0,526 |
 
 Disparidade na taxa de seleção: **0,1203 → 0,0008**. A diferença de recall cai
-de 0,1150 para 0,085 e também fica abaixo do limiar de 0,10.
+de 0,1150 para 0,085 e também fica abaixo do limite de 0,10.
 
 Escolhemos essa técnica por três razões: não exige retreinar, não altera os
-dados, e — decisivo num órgão público — é **auditável**: o limiar de cada grupo
+dados, e — decisivo num órgão público — é **auditável**: o corte de cada grupo
 é um número explícito, publicável e contestável. Uma mitigação que se esconde
 dentro da função de perda não pode ser fiscalizada pela sociedade.
 
-**Custo assumido, declarado abertamente.** Aplicar limiares diferentes por grupo
+**Custo assumido, declarado abertamente.** Aplicar cortes diferentes por grupo
 é tratar pessoas de forma diferente segundo o grupo — o que exige justificativa
-pública explícita. A justificativa aqui é que a alternativa (limiar único)
+pública explícita. A justificativa aqui é que a alternativa (corte único)
 produz disparidade maior. Não é uma solução sem custo; é uma escolha entre dois
 custos, feita às claras.
 
@@ -286,8 +286,8 @@ Uma explicação que só a equipe entende não cumpre o Art. 20.
 
 | Risco | Gravidade | Mitigação adotada |
 |---|---|---|
-| Concentrar fiscalização sobre população pobre | **Alta** | Modelo 1 fora da priorização; limiar calibrado no Modelo 2 |
-| Fila que reconhece menos as dívidas recuperáveis dos setores pobres | Média | Limiar calibrado por grupo, obrigatório no Modelo 2 |
+| Concentrar fiscalização sobre população pobre | **Alta** | Modelo 1 fora da priorização; corte calibrado no Modelo 2 |
+| Fila que reconhece menos as dívidas recuperáveis dos setores pobres | Média | Corte calibrado por grupo, obrigatório no Modelo 2 |
 | Automatizar decisão sem revisão humana | **Alta** | Sistema entrega fila, não veredito; registro obrigatório de predições |
 | Atingir contribuinte vulnerável | **Alta** | Exclusão do IPTU Social por construção, verificada em teste |
 | Reforçar viés histórico da cobrança | Média | Auditoria obrigatória a cada retreino, com publicação |
@@ -306,7 +306,7 @@ Uma explicação que só a equipe entende não cumpre o Art. 20.
    prazo de resposta definido.
 5. **Comitê de acompanhamento** com participação da Procuradoria, do encarregado
    de dados (DPO) e de representação da sociedade civil.
-6. **Reavaliação anual** do proxy de renda e dos limiares de faixa.
+6. **Reavaliação anual** do proxy de renda e dos cortes das faixas.
 7. **Não estender o sistema** a decisões sobre benefícios fiscais, certidões ou
    qualquer ato restritivo de direitos.
 8. **Descontinuar** se a auditoria apontar disparidade crescente sem mitigação
@@ -315,7 +315,7 @@ Uma explicação que só a equipe entende não cumpre o Art. 20.
 ### 4.4 Conclusão
 
 O sistema é **viável e recomendável para uso assistido**, na configuração
-descrita: priorização pelo Modelo 2, com limiar calibrado por grupo, exclusão
+descrita: priorização pelo Modelo 2, com corte calibrado por grupo, exclusão
 do IPTU Social e revisão humana obrigatória.
 
 O achado mais importante deste trabalho é metodológico, e vale além deste

@@ -117,11 +117,11 @@ como veredito, permanece válida em qualquer nível de acurácia.
 
 **Métrica que mais importa.** Para o Modelo 2, o custo dos erros é assimétrico:
 um falso positivo gasta uma diligência à toa; um falso negativo abandona
-dinheiro recuperável. Com o limiar padrão de 0,5, o recall é de **0,540**:
+dinheiro recuperável. Com o corte padrão de 0,5, o recall é de **0,540**:
 quase metade das dívidas recuperáveis fica abaixo do corte. O pipeline de
-demonstração mantém 0,5; num uso real, o limiar deve ser escolhido na validação
+demonstração mantém 0,5; num uso real, o corte de decisão deve ser escolhido na validação
 pelo custo de cada erro, como mostra a aula da Sprint 4. A fila de cobrança não
-depende do limiar — ela ordena pela probabilidade contínua.
+depende do corte — ela ordena pela probabilidade contínua.
 
 ---
 
@@ -168,8 +168,8 @@ concentram **mais casos** de inadimplência, mas setores de renda alta concentra
 
 ## 6. Análise de viés
 
-Testes aplicados: Paridade Demográfica e Igualdade de Oportunidade. Limiar
-adotado: 0,10 de diferença, convenção do AI Fairness 360 (Bellamy et al.,
+Testes aplicados: Paridade Demográfica e Igualdade de Oportunidade. Limite de
+disparidade adotado: 0,10 de diferença, convenção do AI Fairness 360 (Bellamy et al.,
 2019); a regra dos quatro quintos da EEOC (1978), que olha a razão entre as
 taxas e pede ao menos 0,8, aparece no RIA como segunda referência. Detalhamento
 completo, com intervalos de confiança, no [RIA](RIA.md), seção 2.
@@ -182,8 +182,8 @@ completo, com intervalos de confiança, no [RIA](RIA.md), seção 2.
 | média | 1.674 | 0,376 | 0,341 | 0,640 |
 | baixa | 1.966 | 0,555 | 0,535 | 0,775 |
 
-- Paridade Demográfica: **0,3322** (limiar 0,10) — reprovado
-- Igualdade de Oportunidade: **0,3251** (limiar 0,10) — reprovado
+- Paridade Demográfica: **0,3322** (limite 0,10) — reprovado
+- Igualdade de Oportunidade: **0,3251** (limite 0,10) — reprovado
 
 ### Modelo 2 — recuperabilidade: **reprovado, com viés no sentido oposto**
 
@@ -193,14 +193,14 @@ completo, com intervalos de confiança, no [RIA](RIA.md), seção 2.
 | média | 691 | 0,450 | 0,386 | 0,540 |
 | baixa | 1.064 | 0,402 | 0,380 | 0,514 |
 
-- Paridade Demográfica: **0,1203** (limiar 0,10) — reprovado; IC 95% de
+- Paridade Demográfica: **0,1203** (limite 0,10) — reprovado; IC 95% de
   0,059 a 0,194
-- Igualdade de Oportunidade: **0,1150** (limiar 0,10) — reprovado; IC 95% de
+- Igualdade de Oportunidade: **0,1150** (limite 0,10) — reprovado; IC 95% de
   0,036 a 0,215
 - Os intervalos contêm 0,10: com 256 casos de renda alta no teste, a amostra
-  não distingue a disparidade real do limiar. O critério não muda por isso — a
-  aprovação é a estimativa pontual contra o limiar fixado antes.
-- Com limiar calibrado por grupo (`src/fairness.py::simular_mitigacao`), a
+  não distingue a disparidade real do limite. O critério não muda por isso — a
+  aprovação é a estimativa pontual contra o limite fixado antes.
+- Com corte calibrado por grupo (`src/fairness.py::simular_mitigacao`), a
   disparidade na taxa de seleção cai para **0,0008**.
 
 **O achado central.** Os dois modelos são enviesados, em sentidos opostos e com
@@ -209,7 +209,7 @@ setores de renda baixa contra 20,3% dos de renda alta — reflexo direto da
 prevalência real (0,555 contra 0,293), que qualquer classificador calibrado
 reproduz. O que prediz *de quem se recupera* favorece os setores de renda alta
 (50,0% contra 38,0%) e reconhece menos as dívidas recuperáveis dos setores
-pobres (recall de 0,514 contra 0,629). Esse viés é menor, mas passa do limiar:
+pobres (recall de 0,514 contra 0,629). Esse viés é menor, mas passa do limite:
 a recuperação também difere entre grupos (0,484 contra 0,402), e entre os
 atributos mais importantes estão valor venal e distância ao centro, que
 funcionam como substitutos da renda.
@@ -218,7 +218,7 @@ funcionam como substitutos da renda.
 Modelo 1 **não deve ser usado para direcionar cobrança**. Seu uso legítimo é
 diagnóstico — dimensionar o problema, planejar campanhas de educação fiscal,
 identificar setores que precisam de política pública. Quem ordena a fila é o
-Modelo 2, **e só com o limiar calibrado por grupo**: sem essa mitigação, ele
+Modelo 2, **e só com o corte calibrado por grupo**: sem essa mitigação, ele
 também reprova na auditoria.
 
 ---

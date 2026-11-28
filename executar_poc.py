@@ -135,7 +135,7 @@ def main() -> int:
                     for m in auditoria
                     for t in ("paridade_demografica", "igualdade_oportunidade"))
     if not aprovados:
-        print("\n  ATENCAO: a auditoria apontou disparidade acima do limiar.")
+        print("\n  ATENCAO: a auditoria apontou disparidade acima do limite.")
         print("  Discussao e plano de mitigacao em docs/RIA.md, secao 2.")
 
     return 0

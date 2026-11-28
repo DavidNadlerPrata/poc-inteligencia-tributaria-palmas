@@ -305,8 +305,8 @@ def auditoria_equidade(modelo_avaliado: str = "recuperabilidade") -> dict:
     return {
         "modelo": modelo_avaliado,
         "grupo_protegido": "faixa de renda predominante do setor urbano",
-        "limiar_de_alerta": fairness.LIMIAR_ALERTA,
-        "origem_do_limiar": ("convencao do AI Fairness 360 (IBM): diferenca entre -0,1 e 0,1; "
+        "limite_de_disparidade": fairness.LIMITE_DISPARIDADE,
+        "origem_do_limite": ("convencao do AI Fairness 360 (IBM): diferenca entre -0,1 e 0,1; "
                              "a regra dos quatro quintos da EEOC usa a razao, com minimo 0,8"),
         "por_grupo": laudo["por_grupo"],
         "paridade_demografica": laudo["paridade_demografica"],
@@ -314,7 +314,7 @@ def auditoria_equidade(modelo_avaliado: str = "recuperabilidade") -> dict:
         "intervalo_de_confianca_95": fairness.intervalo_bootstrap(teste),
         "como_ler_o_intervalo": ("Incerteza de amostragem do conjunto de teste (bootstrap). "
                                  "Nao muda o criterio: aprovacao e a estimativa pontual "
-                                 "contra o limiar fixado antes da auditoria."),
+                                 "contra o limite fixado antes da auditoria."),
         "onde_ha_discussao": "docs/RIA.md, secao 2 (vieses e mitigacao)",
     }
 
@@ -397,7 +397,7 @@ FERRAMENTAS: dict[str, Ferramenta] = {f.nome: f for f in [
     Ferramenta(
         "auditoria_equidade",
         "Auditoria de fairness por faixa de renda do setor: taxa de selecao e recall por grupo, "
-        "paridade demografica e igualdade de oportunidade, com o limiar de alerta de 0,10.",
+        "paridade demografica e igualdade de oportunidade, com o limite de disparidade de 0,10.",
         _objeto({"modelo_avaliado": _MODELO_AVALIADO}), auditoria_equidade),
     Ferramenta(
         "desempenho_modelos",

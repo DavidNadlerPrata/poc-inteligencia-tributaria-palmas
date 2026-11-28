@@ -52,9 +52,9 @@ class TestParidadeDemografica:
         assert resultado["grupo_mais_selecionado"] == "a"
         assert resultado["grupo_menos_selecionado"] == "b"
 
-    def test_limiar_de_alerta_e_dez_por_cento(self):
-        """O limiar 0,10 e a convencao do AI Fairness 360 (Bellamy et al., 2019)."""
-        assert fairness.LIMIAR_ALERTA == 0.10
+    def test_limite_de_disparidade_e_dez_por_cento(self):
+        """O limite 0,10 e a convencao do AI Fairness 360 (Bellamy et al., 2019)."""
+        assert fairness.LIMITE_DISPARIDADE == 0.10
 
 
 class TestIgualdadeOportunidade:
@@ -116,7 +116,7 @@ class TestMetricasPorGrupo:
 
 
 class TestMitigacao:
-    """Limiar calibrado por grupo (Hardt, Price e Srebro, 2016)."""
+    """Corte calibrado por grupo (Hardt, Price e Srebro, 2016)."""
 
     @pytest.fixture
     def dados_enviesados(self):
@@ -140,12 +140,12 @@ class TestMitigacao:
         depois = resultado["taxa_selecao_depois"]
         assert (depois.max() - depois.min()) < 0.02
 
-    def test_limiares_sao_registrados_por_grupo(self, dados_enviesados):
-        """Auditabilidade: o limiar de cada grupo precisa ser explicito."""
+    def test_cortes_sao_registrados_por_grupo(self, dados_enviesados):
+        """Auditabilidade: o corte de cada grupo precisa ser explicito."""
         resultado = fairness.simular_mitigacao(dados_enviesados)
-        assert "limiar_calibrado" in resultado.columns
+        assert "corte_calibrado" in resultado.columns
         assert len(resultado) == 2
-        assert resultado["limiar_calibrado"].notna().all()
+        assert resultado["corte_calibrado"].notna().all()
 
 
 class TestAuditoriaCompleta:
@@ -202,11 +202,11 @@ class TestIntervaloBootstrap:
             return bloco["ic_superior"] - bloco["ic_inferior"]
         assert largura(4_000) < largura(200) / 3
 
-    def test_disparidade_clara_fica_toda_acima_do_limiar(self):
+    def test_disparidade_clara_fica_toda_acima_do_limite(self):
         resultado = fairness.intervalo_bootstrap(self.carteira(0.8, 0.2, 500), n_reamostras=500)
-        assert resultado["paridade_demografica"]["ic_inferior"] > fairness.LIMIAR_ALERTA
-        assert resultado["paridade_demografica"]["prob_acima_do_limiar"] == 1.0
+        assert resultado["paridade_demografica"]["ic_inferior"] > fairness.LIMITE_DISPARIDADE
+        assert resultado["paridade_demografica"]["prob_acima_do_limite"] == 1.0
 
-    def test_grupos_iguais_ficam_abaixo_do_limiar(self):
+    def test_grupos_iguais_ficam_abaixo_do_limite(self):
         resultado = fairness.intervalo_bootstrap(self.carteira(0.5, 0.5, 5_000), n_reamostras=500)
-        assert resultado["paridade_demografica"]["ic_superior"] < fairness.LIMIAR_ALERTA
+        assert resultado["paridade_demografica"]["ic_superior"] < fairness.LIMITE_DISPARIDADE

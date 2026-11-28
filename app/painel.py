@@ -453,11 +453,11 @@ with aba_equidade:
                     return f"{x:.3f}".replace(".", ",")
                 ajuda = (f"Intervalo de confiança de 95% por bootstrap: "
                          f"{virgula(ic['ic_inferior'])} a {virgula(ic['ic_superior'])}; "
-                         f"{ic['prob_acima_do_limiar']:.0%} das reamostras acima de 0,10. "
+                         f"{ic['prob_acima_do_limite']:.0%} das reamostras acima de 0,10. "
                          "Mede a incerteza do conjunto de teste; a aprovação usa a "
                          "estimativa pontual.")
             coluna.metric(teste["metrica"], f"{teste['diferenca']:.3f}".replace(".", ","),
-                          "dentro do limiar (0,10)" if aprovado else "acima do limiar (0,10)",
+                          "dentro do limite (0,10)" if aprovado else "acima do limite (0,10)",
                           delta_color="green" if aprovado else "red", delta_arrow="off",
                           help=ajuda)
 
@@ -468,7 +468,7 @@ with aba_equidade:
                      f"'{tema.rotulo_faixa(dp['grupo_menos_selecionado'])}'. "
                      f"Discussão e mitigação em `docs/RIA.md`, seção 2.")
         else:
-            st.success("Ambos os testes ficaram dentro do limiar de 0,10 adotado. "
+            st.success("Ambos os testes ficaram dentro do limite de disparidade de 0,10 adotado. "
                        "A auditoria permanece obrigatória a cada retreino.")
 
         st.divider()
@@ -492,10 +492,10 @@ with aba_equidade:
 
         if pacote["mitigacao"] is not None and escolha == "recuperabilidade":
             st.divider()
-            st.markdown("**Mitigação: limiar calibrado por grupo**")
-            st.caption("Em vez de um corte único em 0,5, cada grupo recebe um limiar que "
+            st.markdown("**Mitigação: corte calibrado por grupo**")
+            st.caption("Em vez de um corte único em 0,5, cada grupo recebe um corte que "
                        "iguala as taxas de seleção. Não exige retreinar o modelo e mantém "
-                       "a decisão auditável, com o limiar de cada grupo documentado.")
+                       "a decisão auditável, com o corte de cada grupo documentado.")
             mit = tema.ordenar_faixas(pacote["mitigacao"])
 
             figura = go.Figure()
@@ -516,7 +516,7 @@ with aba_equidade:
             depois = mit["taxa_selecao_depois"]
             st.caption(f"Disparidade na taxa de seleção: **{antes.max() - antes.min():.4f}** → "
                        f"**{depois.max() - depois.min():.4f}** após a calibração.")
-            with st.expander("Ver limiares calibrados"):
+            with st.expander("Ver cortes calibrados"):
                 st.dataframe(mit, use_container_width=True, hide_index=True)
 
 

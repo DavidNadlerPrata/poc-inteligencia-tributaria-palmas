@@ -173,7 +173,7 @@ correspondem ao código.
 
 ## Assistente de IA (arquitetura de agente)
 
-O pipeline de ML continua determinístico: split, treino, limiar, exclusão do
+O pipeline de ML continua determinístico: split, treino, corte de decisão, exclusão do
 IPTU Social e auditoria de fairness são código testado. O agente de IA entra
 **em volta** dele, onde o sistema conversa com pessoas: responder perguntas do
 servidor da Sefin, explicar a posição de um contribuinte na fila, resumir a
@@ -292,12 +292,12 @@ escolhas da calibração no [Model Card](docs/MODEL_CARD.md), seção 5.
 |---|---|---|---|
 | 1 — inadimplência | 0,3322 | 0,3251 | **reprovado** (contra os setores pobres) |
 | 2 — recuperabilidade | 0,1203 | 0,1150 | **reprovado** (a favor dos setores ricos) |
-| 2, com limiar calibrado por grupo | 0,0008 | 0,085 | aprovado |
+| 2, com corte calibrado por grupo | 0,0008 | 0,085 | aprovado |
 
-Limiar de 0,10: convenção do AI Fairness 360 (Bellamy et al., 2019); a regra
+Limite de disparidade de 0,10: convenção do AI Fairness 360 (Bellamy et al., 2019); a regra
 dos quatro quintos da EEOC, que olha a razão entre as taxas, é a segunda
 referência. No Modelo 2 o intervalo de confiança de 95% por bootstrap vai de
-0,059 a 0,194 na paridade — contém o limiar, porque o teste tem só 256 casos de
+0,059 a 0,194 na paridade — contém o limite, porque o teste tem só 256 casos de
 renda alta. O critério, fixado antes, não muda por isso.
 
 **O achado central do PoC.** Dois modelos, mesmos dados, mesmo algoritmo, vieses
@@ -307,7 +307,7 @@ mais chance de ser sinalizado. Perguntar *"de quem se consegue recuperar?"*
 produz um modelo que aprende sobretudo sobre o processo de cobrança, mas ainda
 carrega a renda por substitutos como valor venal e distância ao centro. **A
 escolha da variável-alvo reduz o viés, não o elimina**: o Modelo 2 só ordena a
-fila com o limiar calibrado por grupo. Discussão completa em
+fila com o corte calibrado por grupo. Discussão completa em
 [`docs/RIA.md`](docs/RIA.md), seção 2.
 
 ---
@@ -399,7 +399,7 @@ Este PoC é ponto de partida, não linha de chegada. Caminhos de evolução:
 3. **Explorar outras fontes.** O portal traz também contratos, licitações,
    despesas e folha. Há projeto ali.
 4. **Aprofundar a modelagem.** Comparar algoritmos com justificativa empírica,
-   calibrar limiares por custo real de diligência, testar séries temporais.
+   calibrar cortes de decisão por custo real de diligência, testar séries temporais.
 5. **Melhorar a explicação.** Trocar importância global por SHAP local, que
    responde "por que eu?" em vez de "o que o modelo olha em média".
 6. **Resolver a pendência do achado 2 da EDA.** A receita de dezembro é quase

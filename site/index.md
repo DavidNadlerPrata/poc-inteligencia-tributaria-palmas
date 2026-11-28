@@ -55,13 +55,13 @@ explícita e auditável.</p>
 |---|---|---|---|
 | 1 — inadimplência | 0,3322 | 0,3251 | <span class="selo selo-reprovado">reprovado</span> |
 | 2 — recuperabilidade | 0,1203 | 0,1150 | <span class="selo selo-reprovado">reprovado</span> |
-| 2, com limiar calibrado por grupo | 0,0008 | 0,085 | <span class="selo selo-aprovado">aprovado</span> |
+| 2, com corte calibrado por grupo | 0,0008 | 0,085 | <span class="selo selo-aprovado">aprovado</span> |
 
-O limiar adotado é 0,10 de diferença, convenção do AI Fairness 360 (Bellamy et
+O limite de disparidade adotado é 0,10 de diferença, convenção do AI Fairness 360 (Bellamy et
 al., 2019). Com só 256 casos de renda alta no teste, o intervalo de confiança
-de 95% da paridade do Modelo 2 vai de 0,059 a 0,194 — contém o limiar, mas o
+de 95% da paridade do Modelo 2 vai de 0,059 a 0,194 — contém o limite, mas o
 critério, fixado antes da auditoria, não muda por isso. A consequência prática é direta: **apenas o Modelo 2 ordena a fila de cobrança, e
-só com o limiar calibrado por grupo**. O Modelo 1 fica restrito a uso
+só com o corte calibrado por grupo**. O Modelo 1 fica restrito a uso
 diagnóstico — dimensionar o problema, planejar educação fiscal, subsidiar
 política pública.
 

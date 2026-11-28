@@ -202,14 +202,14 @@ def calcular_marcadores(ns: dict, raiz_tmp: Path) -> dict[str, str]:
     assert trivial["f1"] == 0, \
         "o trivial deixou de prever so 'adimplente' (F1 zero): reescreva a secao 5"
 
-    prob_val, y_val, limiar = ns["prob_val"], ns["y_val"], ns["LIMIAR"]
+    prob_val, y_val, corte_escolhido = ns["prob_val"], ns["y_val"], ns["CORTE"]
     linhas = []
     for corte in (0.35, 0.40, 0.45, 0.50, 0.55):
         previsto = prob_val >= corte
         linhas.append([dec(corte, 2), dec(f1_score(y_val, previsto)),
                        dec(precision_score(y_val, previsto), 3),
                        dec(recall_score(y_val, previsto), 3)])
-    m["tabela_limiares"] = tabela_md(["Limiar", "F1", "Precisão", "Recall"], linhas)
+    m["tabela_cortes"] = tabela_md(["Corte", "F1", "Precisão", "Recall"], linhas)
 
     p = float(np.mean(y_val))
     assert p < 0.5, "a classe majoritaria deixou de ser 'adimplente': reescreva a secao 5"
@@ -217,13 +217,13 @@ def calcular_marcadores(ns: dict, raiz_tmp: Path) -> dict[str, str]:
     acc_modelo_50 = accuracy_score(y_val, prob_val >= 0.5)
     assert acc_modelo_50 > acc_trivial + 0.05, "o modelo nao supera a acuracia do trivial"
     f1_50 = f1_score(y_val, prob_val >= 0.5)
-    f1_no_limiar = f1_score(y_val, prob_val >= limiar)
-    assert 0 <= f1_no_limiar - f1_50 < 0.03, \
-        "o limiar passou a mudar muito o F1: reescreva o paragrafo apos a tabela de limiares"
+    f1_no_corte = f1_score(y_val, prob_val >= corte_escolhido)
+    assert 0 <= f1_no_corte - f1_50 < 0.03, \
+        "o corte passou a mudar muito o F1: reescreva o paragrafo apos a tabela de cortes"
     m["prev_val"], m["acc_trivial"] = pct(p), pct(acc_trivial)
     m["acc_modelo_50"] = pct(acc_modelo_50)
-    m["lim_melhor"], m["LIMIAR"] = dec(limiar, 2), dec(limiar, 2)
-    m["f1_50"], m["f1_melhor"] = dec(f1_50), dec(f1_no_limiar)
+    m["corte_melhor"], m["CORTE"] = dec(corte_escolhido, 2), dec(corte_escolhido, 2)
+    m["f1_50"], m["f1_melhor"] = dec(f1_50), dec(f1_no_corte)
 
     # ---- Secao 6
     pf = ns["placar_final"].reset_index(drop=True)
@@ -235,9 +235,9 @@ def calcular_marcadores(ns: dict, raiz_tmp: Path) -> dict[str, str]:
     m["log_auc"], m["rf_auc"] = dec(log_auc, 3), dec(rf_auc, 3)
     m["dif_auc"] = dec(log_auc - rf_auc, 3)
 
-    # ---- Secao 7: a troca do limiar, medida na validacao
-    assert limiar < 0.5, "o limiar escolhido nao favorece recall: reescreva a secao 7"
-    em50, emlim = prob_val >= 0.5, prob_val >= limiar
+    # ---- Secao 7: a troca do corte, medida na validacao
+    assert corte_escolhido < 0.5, "o corte escolhido nao favorece recall: reescreva a secao 7"
+    em50, emlim = prob_val >= 0.5, prob_val >= corte_escolhido
     vp50, vplim = int((em50 & (y_val == 1)).sum()), int((emlim & (y_val == 1)).sum())
     fp50, fplim = int((em50 & (y_val == 0)).sum()), int((emlim & (y_val == 0)).sum())
     rec50, reclim = recall_score(y_val, em50), recall_score(y_val, emlim)
