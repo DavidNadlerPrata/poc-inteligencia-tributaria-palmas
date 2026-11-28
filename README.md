@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/DavidNadlerPrata/poc-inteligencia-tributaria-palmas/actions/workflows/ci.yml/badge.svg)](https://github.com/DavidNadlerPrata/poc-inteligencia-tributaria-palmas/actions/workflows/ci.yml)
 [![Python](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-blue)](https://www.python.org/)
-[![Testes](https://img.shields.io/badge/testes-202-brightgreen)](tests/)
+[![Testes](https://img.shields.io/badge/testes-208-brightgreen)](tests/)
 [![Cobertura](https://img.shields.io/badge/cobertura-90%25-brightgreen)](tests/)
 
 ## Publicações
@@ -244,7 +244,7 @@ Toda pergunta, ferramenta chamada e resposta fica em
 | `app/tema.py` | Paleta validada e enxoval dos gráficos |
 | `notebooks/eda_sprint2.ipynb` | **Relatório de EDA da Sprint 2**, executado |
 | `notebooks/gerar_eda.py` | Script que gera o notebook (diff legível no Git) |
-| `tests/` | Suíte com 202 testes — `test_etica.py` é o mais importante |
+| `tests/` | Suíte com 208 testes — `test_etica.py` é o mais importante |
 | `data/carteira_contribuintes.csv` | **Carteira sintética versionada** — 20.000 registros, pronta para abrir |
 | `tests/fixtures/` | Amostra de dados reais para o CI rodar sem acessar a API |
 | `.github/workflows/ci.yml` | Integração contínua (GitHub Actions) |
@@ -325,7 +325,7 @@ fila com o corte calibrado por grupo. Discussão completa em
 ## Testes
 
 ```bash
-python -m pytest          # 202 testes, ~1 min
+python -m pytest          # 208 testes, ~1 min
 ```
 
 | Arquivo | O que cobre |

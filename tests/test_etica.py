@@ -14,7 +14,9 @@ from __future__ import annotations
 import pandas as pd
 import pytest
 
+import config
 import modelo
+import sintetico
 
 
 class TestExclusaoIptuSocial:
@@ -119,3 +121,26 @@ class TestPriorizacaoUsaModeloCorreto:
 def test_faixas_de_recuperabilidade_nas_fronteiras(probabilidade, faixa):
     """As faixas alta/media/baixa exigidas pelo plano de ensino, nos limites."""
     assert modelo.faixa_recuperabilidade(probabilidade) == faixa
+
+
+class TestDesempenhoNaoSuperaOTeto:
+    """Guarda contra vazamento de dados.
+
+    A carteira sintetica tem um teto conhecido: nenhum modelo ordena melhor que
+    um oraculo que conhece a formula do gerador. Um modelo acima dele estaria
+    usando informacao do resultado ou do futuro -- vazamento, nao qualidade.
+    """
+
+    MARGEM = 0.05  # o teste de 3.000 registros oscila; o teto e medido no universo
+
+    @pytest.fixture(scope="class")
+    def teto(self):
+        # Mesma carteira da fixture `carteira` do conftest (3.000 registros).
+        return sintetico.teto_de_desempenho(n=3_000, semente=config.SEMENTE)
+
+    @pytest.mark.parametrize("nome", ["inadimplencia", "recuperabilidade"])
+    def test_roc_auc_nao_passa_do_teto_alcancavel(self, metricas_treino, teto, nome):
+        modelo_auc = metricas_treino[nome]["roc_auc"]
+        limite = teto[nome]["alcancavel"]["roc_auc"] + self.MARGEM
+        assert modelo_auc <= limite, (
+            f"{nome}: ROC-AUC {modelo_auc:.3f} acima do teto {limite:.3f} -- procure vazamento")

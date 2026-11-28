@@ -76,7 +76,7 @@ paridade e calibração ao mesmo tempo, está no
 <div class="cartoes">
 <div class="cartao"><div class="valor">17.507</div><div class="rotulo">registros reais coletados da API da Prefeitura</div></div>
 <div class="cartao"><div class="valor">54,9%</div><div class="rotulo">do retorno esperado concentrado nos 20% melhores casos</div></div>
-<div class="cartao"><div class="valor">202</div><div class="rotulo">testes automatizados, 94% de cobertura</div></div>
+<div class="cartao"><div class="valor">208</div><div class="rotulo">testes automatizados, 94% de cobertura</div></div>
 <div class="cartao"><div class="valor">0,0008</div><div class="rotulo">disparidade após mitigação (era 0,1203)</div></div>
 </div>
 

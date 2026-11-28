@@ -83,6 +83,55 @@ def _deslocamento_para_proporcao(propensao: np.ndarray, alvo: float) -> float:
 
 def gerar_carteira(n: int | None = None, semente: int | None = None) -> pd.DataFrame:
     """Gera a carteira de contribuintes de IPTU com historico e alvos."""
+    carteira, _ = _gerar(n, semente)
+    return carteira
+
+
+def probabilidades_verdadeiras(n: int | None = None,
+                               semente: int | None = None) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """A carteira e, para cada contribuinte, as chances que o gerador sorteou.
+
+    Duas versoes de cada chance:
+    - `*_atributos`: a formula aplicada so aos atributos que o modelo tambem ve.
+      Nenhum modelo treinado nesses atributos ordena melhor que ela;
+    - `*_com_ruido`: inclui o ruido oculto (o que nenhum cadastro registra).
+      Nem um oraculo com essa informacao escapa do sorteio final.
+    """
+    return _gerar(n, semente)
+
+
+def teto_de_desempenho(n: int | None = None, semente: int | None = None) -> dict:
+    """ROC-AUC e acuracia (corte 0,5) de um oraculo que conhece a formula do gerador.
+
+    Medido no mesmo universo de cada modelo: sem o IPTU Social e, no Modelo 2,
+    so quem tem divida. Duas versoes (ver probabilidades_verdadeiras):
+    - alcancavel: o oraculo ve os atributos do gerador -- inclusive a faixa de
+      renda, que os modelos nao usam por decisao etica;
+    - absoluto: ve tambem o ruido oculto; so o sorteio final o separa do acerto.
+
+    Um modelo acima do teto alcancavel estaria usando informacao que nao
+    deveria ter: e o sinal de vazamento de dados.
+    """
+    from sklearn.metrics import accuracy_score, roc_auc_score
+
+    carteira, chances = probabilidades_verdadeiras(n, semente)
+    universo = carteira["iptu_social"] == 0
+    com_divida = universo & (carteira["valor_divida_consolidada"] > 0)
+
+    teto = {}
+    for nome, mascara, alvo, prefixo in (
+            ("inadimplencia", universo, "inadimplente_proximo_exercicio", "prob_inadimplencia"),
+            ("recuperabilidade", com_divida, "divida_recuperada_12m", "prob_recuperacao")):
+        y = carteira.loc[mascara, alvo]
+        teto[nome] = {}
+        for versao, sufixo in (("alcancavel", "atributos"), ("absoluto", "com_ruido")):
+            prob = chances.loc[mascara, f"{prefixo}_{sufixo}"]
+            teto[nome][versao] = {"roc_auc": round(float(roc_auc_score(y, prob)), 4),
+                                  "acuracia": round(float(accuracy_score(y, prob >= 0.5)), 4)}
+    return teto
+
+
+def _gerar(n: int | None, semente: int | None) -> tuple[pd.DataFrame, pd.DataFrame]:
     n = n or config.TAMANHO_AMOSTRA
     rng = np.random.default_rng(semente or config.SEMENTE)
 
@@ -156,6 +205,10 @@ def gerar_carteira(n: int | None = None, semente: int | None = None) -> pd.DataF
     iptu_social = (rng.random(n) < chance_social).astype(int)
 
     # ---------------- Alvo 1: inadimplencia no proximo exercicio ----------------
+    # O ruido oculto representa o que nenhum cadastro registra (desemprego,
+    # doenca...). E ele, somado ao sorteio final, que impoe um teto ao
+    # desempenho de qualquer modelo -- ver probabilidades_verdadeiras().
+    ruido_inad = rng.normal(0, 0.55, size=n)
     logito_inad = (-1.15
                    + 0.62 * exercicios_inadimplentes
                    + 0.55 * parcelamento_rompido
@@ -164,13 +217,14 @@ def gerar_carteira(n: int | None = None, semente: int | None = None) -> pd.DataF
                    + 0.28 * carga_relativa
                    + 0.012 * distancia_centro
                    - 0.22 * np.log1p(valor_venal / 1e5)
-                   + rng.normal(0, 0.55, size=n))
+                   + ruido_inad)
     # A taxa media e calibrada para a inadimplencia anual medida em Palmas.
     logito_inad += _deslocamento_para_proporcao(logito_inad, config.INADIMPLENCIA_ANUAL)
     inadimplente = (rng.random(n) < _sigmoide(logito_inad)).astype(int)
 
     # ---------------- Alvo 2: recuperacao da divida em 12 meses ----------------
     # So faz sentido para quem tem divida inscrita.
+    ruido_rec = rng.normal(0, 0.70, size=n)
     logito_rec = (1.05
                   - 0.0011 * tempo_inadimplencia
                   - 0.40 * np.log1p(valor_divida / 1000)
@@ -178,9 +232,9 @@ def gerar_carteira(n: int | None = None, semente: int | None = None) -> pd.DataF
                   - 0.85 * parcelamento_rompido
                   + 0.30 * np.where(renda == "alta", 1.0, np.where(renda == "media", 0.4, 0.0))
                   + 0.18 * np.log1p(valor_venal / 1e5)
-                  + rng.normal(0, 0.70, size=n))
+                  + ruido_rec)
     recuperado = np.where(tem_divida,
-                          (rng.random(n) < 1 / (1 + np.exp(-logito_rec))).astype(int), 0)
+                          (rng.random(n) < _sigmoide(logito_rec)).astype(int), 0)
 
     carteira = pd.DataFrame({
         "id_contribuinte": [_pseudonimizar(i) for i in range(n)],
@@ -202,7 +256,14 @@ def gerar_carteira(n: int | None = None, semente: int | None = None) -> pd.DataF
         "divida_recuperada_12m": recuperado,
     })
 
-    return _calibrar_pelos_agregados(carteira)
+    chances = pd.DataFrame({
+        "id_contribuinte": carteira["id_contribuinte"],
+        "prob_inadimplencia_atributos": _sigmoide(logito_inad - ruido_inad),
+        "prob_inadimplencia_com_ruido": _sigmoide(logito_inad),
+        "prob_recuperacao_atributos": _sigmoide(logito_rec - ruido_rec),
+        "prob_recuperacao_com_ruido": _sigmoide(logito_rec),
+    })
+    return _calibrar_pelos_agregados(carteira), chances
 
 
 def _calibrar_pelos_agregados(carteira: pd.DataFrame) -> pd.DataFrame:

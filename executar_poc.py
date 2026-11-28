@@ -72,7 +72,16 @@ def main() -> int:
     # ---------------- Sprint 3: modelos ----------------
     # treinar() ja imprime as metricas e grava models/metricas.json.
     cabecalho("[Sprint 3] Treino e avaliacao dos modelos de Machine Learning")
-    modelo.treinar(dados)
+    metricas = modelo.treinar(dados)
+
+    # Teto: o melhor que um oraculo que conhece a formula do gerador conseguiria.
+    teto = sintetico.teto_de_desempenho()
+    for nome, valores in teto.items():
+        print(f"  teto do ROC-AUC ({nome}): alcancavel {valores['alcancavel']['roc_auc']:.3f}"
+              f" | absoluto {valores['absoluto']['roc_auc']:.3f}"
+              f" | modelo {metricas[nome]['roc_auc']:.3f}")
+    with open(config.DADOS / "teto_desempenho.json", "w", encoding="utf-8") as arquivo:
+        json.dump(teto, arquivo, ensure_ascii=False, indent=2)
 
     cabecalho("[Sprint 3] Fila de cobranca priorizada por retorno esperado")
     fila = modelo.priorizar_cobranca(dados)

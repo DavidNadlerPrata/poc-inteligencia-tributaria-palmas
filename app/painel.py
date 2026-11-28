@@ -41,7 +41,8 @@ st.set_page_config(page_title="Inteligencia Tributaria | Palmas-TO",
 # --------------------------------------------------------------------------
 ARTEFATOS = [config.BANCO, config.METRICAS, config.CSV_ARRECADACAO,
              config.DADOS / "fila_cobranca.csv", config.DADOS / "auditoria_fairness.json",
-             config.DADOS / "mitigacao_fairness.csv", config.DADOS / "importancia_atributos.csv"]
+             config.DADOS / "mitigacao_fairness.csv", config.DADOS / "importancia_atributos.csv",
+             config.DADOS / "teto_desempenho.json"]
 
 
 def versao_dos_artefatos() -> tuple:
@@ -91,8 +92,14 @@ def carregar(versao: tuple):  # versao so compoe a chave do cache
     if config.CSV_ARRECADACAO.exists():
         arrecadacao = pd.read_csv(config.CSV_ARRECADACAO, sep=";", dtype=str)
 
+    teto = {}
+    caminho_teto = config.DADOS / "teto_desempenho.json"
+    if caminho_teto.exists():
+        teto = json.loads(caminho_teto.read_text(encoding="utf-8"))
+
     return {"dados": dados, "fila": fila, "metricas": metricas, "auditoria": auditoria,
-            "mitigacao": mitigacao, "importancia": importancia, "arrecadacao": arrecadacao}
+            "mitigacao": mitigacao, "importancia": importancia, "arrecadacao": arrecadacao,
+            "teto": teto}
 
 
 def modo_escuro() -> bool:
@@ -542,18 +549,42 @@ estrutura de colunas de um cadastro imobiliário municipal.
     if metricas:
         st.divider()
         st.markdown("### Desempenho dos modelos")
+        teto = pacote["teto"]
+
+        def decimal(valor) -> str:
+            return f"{valor:.3f}".replace(".", ",") if valor is not None else "—"
+
         linhas = []
         for nome, bloco in metricas.items():
+            alcancavel = teto.get(nome, {}).get("alcancavel", {}).get("roc_auc")
             linhas.append({
                 "Modelo": ("Inadimplência" if nome == "inadimplencia" else "Recuperabilidade"),
-                "Acurácia": bloco["acuracia"], "Precisão": bloco["precisao"],
-                "Recall": bloco["recall"], "F1": bloco["f1"], "ROC-AUC": bloco["roc_auc"],
-                "n (teste)": bloco["n_teste"],
+                "Acurácia": decimal(bloco["acuracia"]), "Precisão": decimal(bloco["precisao"]),
+                "Recall": decimal(bloco["recall"]), "F1": decimal(bloco["f1"]),
+                "ROC-AUC": decimal(bloco["roc_auc"]),
+                "Teto do ROC-AUC": decimal(alcancavel),
+                "n (teste)": tema.milhar(bloco["n_teste"]),
             })
-        st.dataframe(pd.DataFrame(linhas), use_container_width=True, hide_index=True)
-        st.caption("Desempenho moderado é esperado e honesto: o processo gerador embute "
-                   "ruído deliberado. Números próximos de 1,0 num PoC como este indicariam "
-                   "vazamento de dados, não qualidade.")
+        st.dataframe(pd.DataFrame(linhas), width="stretch", hide_index=True)
+
+        if teto:
+            def roc(nome, versao):
+                return decimal(teto[nome][versao]["roc_auc"])
+            st.markdown(
+                "**Por que existe um teto.** O gerador da carteira sintética embute ruído "
+                "deliberado: um termo oculto, que representa o que nenhum cadastro registra "
+                "(desemprego, doença), e o sorteio final de cada resultado — quem tem 70% de "
+                "chance de pagar deixa de pagar em 3 de cada 10 casos. Um oráculo que conhece "
+                "a fórmula do gerador e todos os seus atributos chega a ROC-AUC de "
+                f"**{roc('inadimplencia', 'alcancavel')}** na inadimplência e "
+                f"**{roc('recuperabilidade', 'alcancavel')}** na recuperabilidade; mesmo "
+                "conhecendo também o ruído oculto, não passaria de "
+                f"{roc('inadimplencia', 'absoluto')} e {roc('recuperabilidade', 'absoluto')}. "
+                "O oráculo usa a faixa de renda, que os modelos deixam de fora por decisão "
+                "ética — parte da distância até o teto é o custo dessa decisão.")
+        st.caption("Um ROC-AUC acima do teto seria impossível de forma legítima: indicaria "
+                   "vazamento de dados — o modelo usando informação do resultado ou do futuro "
+                   "—, não qualidade. As métricas usam o corte de decisão de 0,5.")
 
     st.divider()
     st.markdown("### Limitações — leia antes de usar em decisão real")

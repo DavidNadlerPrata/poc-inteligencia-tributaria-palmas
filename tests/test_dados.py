@@ -304,3 +304,32 @@ class TestLimpezaDaArrecadacao:
         limpo = etl._limpar_arrecadacao(bruto)
         assert limpo["valor_orcado"].notna().all()
         assert (limpo["valor_orcado"] >= 0).all()
+
+
+class TestProbabilidadesVerdadeiras:
+    """As chances que o gerador sorteou, usadas para medir o teto de desempenho."""
+
+    @pytest.fixture(scope="class")
+    def geradas(self):
+        return sintetico.probabilidades_verdadeiras(n=3_000, semente=config.SEMENTE)
+
+    def test_carteira_e_a_mesma_de_gerar_carteira(self, geradas):
+        carteira, _ = geradas
+        pd.testing.assert_frame_equal(
+            carteira, sintetico.gerar_carteira(n=3_000, semente=config.SEMENTE))
+
+    def test_chances_sao_probabilidades_alinhadas_a_carteira(self, geradas):
+        carteira, chances = geradas
+        assert (chances["id_contribuinte"] == carteira["id_contribuinte"]).all()
+        valores = chances.drop(columns="id_contribuinte").to_numpy()
+        assert ((valores > 0) & (valores < 1)).all()
+
+    def test_chance_media_de_inadimplencia_e_a_calibrada(self, geradas):
+        _, chances = geradas
+        assert chances["prob_inadimplencia_com_ruido"].mean() == pytest.approx(
+            config.INADIMPLENCIA_ANUAL, abs=1e-6)
+
+    def test_teto_absoluto_supera_o_alcancavel(self):
+        teto = sintetico.teto_de_desempenho(n=3_000, semente=config.SEMENTE)
+        for nome in ("inadimplencia", "recuperabilidade"):
+            assert 0.5 < teto[nome]["alcancavel"]["roc_auc"] < teto[nome]["absoluto"]["roc_auc"] < 1

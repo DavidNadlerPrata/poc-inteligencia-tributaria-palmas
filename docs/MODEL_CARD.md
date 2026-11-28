@@ -109,6 +109,17 @@ Matriz de confusão `[[VN, FP], [FN, VP]]` = `[[815, 333], [397, 466]]`
 **Leitura honesta destes números.** ROC-AUC de 0,80 (Modelo 1) e 0,69
 (Modelo 2): os dois são claramente melhores que o acaso, e o Modelo 2 — o que
 ordena a fila — ainda erra com frequência.
+
+**O teto desta carteira.** O gerador sintético embute ruído deliberado: um
+termo oculto, que representa o que nenhum cadastro registra, e o sorteio final
+de cada resultado. Por isso nenhum modelo acerta tudo. Um oráculo que conhece a
+fórmula do gerador e todos os seus atributos (`sintetico.teto_de_desempenho`)
+chega a ROC-AUC de **0,804** na inadimplência e **0,722** na recuperabilidade;
+conhecendo também o ruído oculto, a 0,832 e 0,777. O Modelo 1 está no teto. Ao
+Modelo 2 faltam 0,036, e parte disso é o custo de não usar a faixa de renda,
+que o oráculo usa. Um modelo acima do teto estaria usando informação do
+resultado ou do futuro — por isso `tests/test_etica.py` falha se isso
+acontecer.
 Isso é esperado e desejável num PoC cujo processo gerador embute ruído
 deliberado. Métricas próximas de 1,0 aqui indicariam vazamento de dados, não
 qualidade. Em produção, com histórico real de pagamentos, espera-se desempenho
