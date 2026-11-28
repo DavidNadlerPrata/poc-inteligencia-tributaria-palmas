@@ -102,6 +102,23 @@ def compacto(valor: float) -> str:
     return moeda(valor)
 
 
+# Faixas (de renda do setor e de recuperabilidade) sao ordinais: aparecem sempre
+# de cima para baixo, e nunca em ordem alfabetica. Os dados guardam "media" sem
+# acento; o acento entra so na exibicao.
+ORDEM_FAIXAS = ["alta", "media", "baixa"]
+
+
+def rotulo_faixa(valor: str) -> str:
+    return "média" if valor == "media" else valor
+
+
+def ordenar_faixas(tabela, coluna: str = "grupo"):
+    """Ordena as linhas na ordem alta, media, baixa e poe o acento no rotulo."""
+    ordenada = (tabela.assign(_ordem=tabela[coluna].map(ORDEM_FAIXAS.index))
+                .sort_values("_ordem").drop(columns="_ordem"))
+    return ordenada.assign(**{coluna: ordenada[coluna].map(rotulo_faixa)})
+
+
 def milhar(valor: int) -> str:
     """Inteiro com ponto de milhar: 16604 -> '16.604'."""
     return f"{valor:,}".replace(",", ".")

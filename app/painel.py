@@ -255,8 +255,8 @@ with aba_cobranca:
         f1, f2, f3 = st.columns([2, 2, 1])
         setores = ["(todos)"] + sorted(fila["setor_urbano"].unique().tolist())
         setor_escolhido = f1.selectbox("Setor urbano", setores)
-        faixas = f2.multiselect("Faixa de recuperabilidade", ["alta", "media", "baixa"],
-                                default=["alta", "media", "baixa"])
+        faixas = f2.multiselect("Faixa de recuperabilidade", tema.ORDEM_FAIXAS,
+                                default=tema.ORDEM_FAIXAS, format_func=tema.rotulo_faixa)
         quantidade = f3.number_input("Exibir", 10, 500, 25, step=5)
 
         filtrada = fila.copy()
@@ -276,15 +276,15 @@ with aba_cobranca:
         # --- Faixas de recuperabilidade: rampa ordinal de uma hue ---
         with col_a:
             st.markdown("**Carteira por faixa de recuperabilidade**")
-            ordem = ["alta", "media", "baixa"]
             por_faixa = (filtrada.groupby("faixa_recuperabilidade")
                          .agg(casos=("id_contribuinte", "count"),
                               divida=("valor_divida_consolidada", "sum"),
                               retorno=("retorno_esperado", "sum"))
-                         .reindex(ordem).fillna(0).reset_index())
+                         .reindex(tema.ORDEM_FAIXAS).fillna(0).reset_index())
 
             figura = go.Figure(go.Bar(
-                x=por_faixa["faixa_recuperabilidade"], y=por_faixa["retorno"],
+                x=por_faixa["faixa_recuperabilidade"].map(tema.rotulo_faixa),
+                y=por_faixa["retorno"],
                 marker=dict(color=[P["ordinal"][f] for f in por_faixa["faixa_recuperabilidade"]],
                             cornerradius=4),
                 width=0.55,
@@ -300,13 +300,13 @@ with aba_cobranca:
             st.markdown("**Dívida × probabilidade de recuperação**")
             amostra = filtrada.sample(min(1200, len(filtrada)), random_state=config.SEMENTE)
             figura = go.Figure()
-            for faixa in ["alta", "media", "baixa"]:
+            for faixa in tema.ORDEM_FAIXAS:
                 bloco = amostra[amostra["faixa_recuperabilidade"] == faixa]
                 if bloco.empty:
                     continue
                 figura.add_trace(go.Scatter(
                     x=bloco["valor_divida_consolidada"], y=bloco["prob_recuperacao"],
-                    mode="markers", name=f"recuperabilidade {faixa}",
+                    mode="markers", name=f"recuperabilidade {tema.rotulo_faixa(faixa)}",
                     marker=dict(size=8, color=P["ordinal"][faixa], opacity=0.55,
                                 line=dict(width=2, color=P["superficie"])),
                     hovertemplate="Dívida: R$ %{x:,.0f}<br>P(recuperação): "
@@ -321,8 +321,10 @@ with aba_cobranca:
         colunas = ["setor_urbano", "tipo_imovel", "valor_divida_consolidada",
                    "tempo_inadimplencia_dias", "prob_recuperacao",
                    "faixa_recuperabilidade", "retorno_esperado"]
+        exibida = filtrada.head(int(quantidade))[colunas]
         st.dataframe(
-            filtrada.head(int(quantidade))[colunas],
+            exibida.assign(faixa_recuperabilidade=exibida["faixa_recuperabilidade"]
+                           .map(tema.rotulo_faixa)),
             use_container_width=True, hide_index=True,
             column_config={
                 "setor_urbano": "Setor",
@@ -395,7 +397,8 @@ with aba_contribuinte:
 
                 faixa = mod.faixa_recuperabilidade(prob_rec)
                 st.metric("Probabilidade de recuperação da dívida (12 meses)", f"{prob_rec:.1%}",
-                          f"faixa {faixa}", delta_color="off", delta_arrow="off")
+                          f"faixa {tema.rotulo_faixa(faixa)}", delta_color="off",
+                          delta_arrow="off")
                 st.metric("Retorno esperado", tema.moeda(divida * prob_rec))
             else:
                 st.caption("Sem dívida inscrita: o modelo de recuperabilidade não se aplica.")
@@ -434,7 +437,7 @@ with aba_equidade:
                                                   if x == "recuperabilidade"
                                                   else "Modelo 1 — inadimplência"))
         bloco = auditoria[escolha]
-        por_grupo = pd.DataFrame(bloco["por_grupo"])
+        por_grupo = tema.ordenar_faixas(pd.DataFrame(bloco["por_grupo"]))
         dp = bloco["paridade_demografica"]
         eo = bloco["igualdade_oportunidade"]
 
@@ -460,8 +463,9 @@ with aba_equidade:
 
         if not (dp["aprovado"] and eo["aprovado"]):
             st.error(f"**Disparidade relevante detectada.** O grupo "
-                     f"'{dp['grupo_mais_selecionado']}' é selecionado com muito mais "
-                     f"frequência que '{dp['grupo_menos_selecionado']}'. "
+                     f"'{tema.rotulo_faixa(dp['grupo_mais_selecionado'])}' é selecionado "
+                     f"com muito mais frequência que "
+                     f"'{tema.rotulo_faixa(dp['grupo_menos_selecionado'])}'. "
                      f"Discussão e mitigação em `docs/RIA.md`, seção 2.")
         else:
             st.success("Ambos os testes ficaram dentro do limiar de 0,10 adotado. "
@@ -492,7 +496,7 @@ with aba_equidade:
             st.caption("Em vez de um corte único em 0,5, cada grupo recebe um limiar que "
                        "iguala as taxas de seleção. Não exige retreinar o modelo e mantém "
                        "a decisão auditável, com o limiar de cada grupo documentado.")
-            mit = pacote["mitigacao"]
+            mit = tema.ordenar_faixas(pacote["mitigacao"])
 
             figura = go.Figure()
             figura.add_trace(go.Bar(
