@@ -166,6 +166,9 @@ def resumo_carteira() -> dict:
              "retorno_esperado_reais": _reais(linha.retorno_esperado_reais)}
             for linha in por_faixa.itertuples()],
         "prescricao": priorizacao.resumo_prescricao(fila),
+        "base_da_prescricao": (f"fila de cobranca: {len(fila)} dividas, "
+                               f"R$ {_reais(divida):.2f}. Os percentuais de prescricao sao "
+                               "sobre a fila, nao sobre a carteira inteira."),
         "sobre_prescricao": ("A fila ordena por retorno esperado e nao considera o prazo de "
                              "5 anos (CTN, art. 174). O alerta usa o tempo de inadimplencia "
                              "como aproximacao e nao conhece causas de interrupcao; a "

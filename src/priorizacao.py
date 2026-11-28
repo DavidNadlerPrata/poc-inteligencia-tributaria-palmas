@@ -62,9 +62,16 @@ def resumo_prescricao(fila: pd.DataFrame, fracao_topo: float = 0.20) -> dict:
     resumo = {}
     for alerta in (ALERTA_PROXIMA, ALERTA_VENCIDA):
         marca = alertas == alerta
+        divida_do_alerta = float(fila.loc[marca, "valor_divida_consolidada"].sum())
+        divida_da_fila = float(fila["valor_divida_consolidada"].sum())
         resumo[alerta] = {
             "casos": int(marca.sum()),
-            "divida_reais": round(float(fila.loc[marca, "valor_divida_consolidada"].sum()), 2),
+            "divida_reais": round(divida_do_alerta, 2),
+            # Percentuais prontos e com a base no nome: quem le (pessoa ou
+            # assistente de IA) nao precisa adivinhar sobre o que foram calculados.
+            "percentual_dos_casos_da_fila": round(float(marca.mean()), 4),
+            "percentual_da_divida_da_fila": (round(divida_do_alerta / divida_da_fila, 4)
+                                             if divida_da_fila else 0.0),
             f"no_topo_{int(fracao_topo * 100)}pct": int((marca & (posicao <= fracao_topo)).sum()),
             "posicao_mediana_na_fila": (round(float(np.median(posicao[marca])), 4)
                                         if marca.any() else None),

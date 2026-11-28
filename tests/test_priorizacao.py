@@ -39,6 +39,9 @@ class TestAlertaDePrescricao:
         assert proxima["divida_reais"] == 2_000.0
         assert proxima["no_topo_20pct"] == 0
         assert proxima["posicao_mediana_na_fila"] == pytest.approx(0.95)
+        # Percentuais com a base no nome: 2 de 10 dividas, R$ 2 mil de R$ 10 mil.
+        assert proxima["percentual_dos_casos_da_fila"] == pytest.approx(0.2)
+        assert proxima["percentual_da_divida_da_fila"] == pytest.approx(0.2)
         assert resumo[priorizacao.ALERTA_VENCIDA]["casos"] == 0
 
 
