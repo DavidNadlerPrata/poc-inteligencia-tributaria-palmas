@@ -39,7 +39,7 @@ ignore = [
 "notebooks/gerar_eda.py" = ["E501"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["assistente", "config", "coleta", "etl", "fairness", "ferramentas", "modelo", "sintetico"]
+known-first-party = ["assistente", "config", "coleta", "etl", "fairness", "ferramentas", "modelo", "priorizacao", "sintetico"]
 
 # --------------------------------------------------------------------------
 # Pytest

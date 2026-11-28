@@ -32,31 +32,41 @@ encontrar na Sprint 2.
 ## O achado central
 
 <div class="destaque">
-<h3>Dois modelos, mesmos dados, comportamentos éticos opostos</h3>
+<h3>A pergunta e o algoritmo decidem o viés antes da auditoria</h3>
 
-<p>Treinamos dois classificadores sobre a mesma base, com o mesmo algoritmo e os
-mesmos atributos. Um reprovou nos dois testes de justiça algorítmica; o outro
-passou com folga. A diferença não está na técnica — está na <strong>pergunta</strong>.</p>
+<p>Treinamos dois classificadores sobre a mesma base e os mesmos atributos. O viés
+de cada um dependeu de duas escolhas feitas antes de qualquer auditoria: a
+<strong>pergunta</strong> e o <strong>algoritmo</strong>.</p>
 
 <p>Perguntar <em>"quem provavelmente vai dever?"</em> produz um modelo que aprende sobre
-pobreza: morador de setor de renda baixa tem <strong>3,3 vezes</strong> mais chance de ser
+pobreza: morador de setor de renda baixa tem <strong>2,6 vezes</strong> mais chance de ser
 sinalizado. Perguntar <em>"de quem se consegue recuperar?"</em> produz um modelo que
-aprende sobre processo de cobrança — o tempo desde a inscrição da dívida pesa
-cinco vezes mais que qualquer característica do contribuinte.</p>
+aprende sobretudo sobre o processo de cobrança — o tempo desde a inscrição da
+dívida é, de longe, o atributo mais importante.</p>
 
-<p><strong>A escolha da variável-alvo é uma decisão ética, tomada antes da primeira linha
-de código de modelagem.</strong></p>
+<p>Com gradient boosting, esse segundo modelo ainda reconstruía a renda por
+substitutos como valor venal e distância ao centro, e reprovava nos dois testes.
+Com regressão logística, os substitutos perderam peso: ele passa na igualdade de
+oportunidade e reprova só na paridade, selecionando mais a faixa de renda alta.</p>
+
+<p><strong>Pergunta e algoritmo reduzem o viés, mas não o eliminam.</strong> O que torna
+o segundo modelo utilizável é a combinação deles com uma mitigação explícita e
+auditável.</p>
 </div>
 
 | Modelo | Paridade Demográfica | Igualdade de Oportunidade | Resultado |
 |---|---|---|---|
-| 1 — inadimplência | 0,4745 | 0,4757 | <span class="selo selo-reprovado">reprovado</span> |
-| 2 — recuperabilidade | 0,0475 | 0,0412 | <span class="selo selo-aprovado">aprovado</span> |
+| 1 — inadimplência | 0,3322 | 0,3251 | <span class="selo selo-reprovado">reprovado</span> |
+| 2 — recuperabilidade | 0,1217 | 0,0840 | <span class="selo selo-reprovado">reprovado</span> |
+| 2, com corte calibrado por grupo | 0,0019 | 0,069 | <span class="selo selo-aprovado">aprovado</span> |
 
-O limiar adotado é 0,10, seguindo Barocas, Hardt e Narayanan (2023). A
-consequência prática é direta: **apenas o Modelo 2 ordena a fila de cobrança**.
-O Modelo 1 fica restrito a uso diagnóstico — dimensionar o problema, planejar
-educação fiscal, subsidiar política pública.
+O limite de disparidade adotado é 0,10 de diferença, convenção do AI Fairness 360 (Bellamy et
+al., 2019). Com só 256 casos de renda alta no teste, o intervalo de confiança
+de 95% da paridade do Modelo 2 vai de 0,054 a 0,190 — contém o limite, mas o
+critério, fixado antes da auditoria, não muda por isso. A consequência prática é direta: **apenas o Modelo 2 ordena a fila de cobrança, e
+só com o corte calibrado por grupo**. O Modelo 1 fica restrito a uso
+diagnóstico — dimensionar o problema, planejar educação fiscal, subsidiar
+política pública.
 
 A discussão completa, incluindo a impossibilidade matemática de satisfazer
 paridade e calibração ao mesmo tempo, está no
@@ -68,31 +78,65 @@ paridade e calibração ao mesmo tempo, está no
 
 <div class="cartoes">
 <div class="cartao"><div class="valor">17.507</div><div class="rotulo">registros reais coletados da API da Prefeitura</div></div>
-<div class="cartao"><div class="valor">50,5%</div><div class="rotulo">do retorno esperado concentrado nos 20% melhores casos</div></div>
-<div class="cartao"><div class="valor">97</div><div class="rotulo">testes automatizados, 90% de cobertura</div></div>
-<div class="cartao"><div class="valor">0,0006</div><div class="rotulo">disparidade após mitigação (era 0,0475)</div></div>
+<div class="cartao"><div class="valor">51,7%</div><div class="rotulo">do retorno esperado concentrado nos 20% melhores casos</div></div>
+<div class="cartao"><div class="valor">222</div><div class="rotulo">testes automatizados, 95% de cobertura</div></div>
+<div class="cartao"><div class="valor">0,0019</div><div class="rotulo">disparidade após mitigação (era 0,1217)</div></div>
 </div>
 
 ### Desempenho dos modelos
 
 | | Modelo 1 — inadimplência | Modelo 2 — recuperabilidade |
 |---|---|---|
-| Acurácia | 0,652 | 0,620 |
-| Precisão | 0,664 | 0,616 |
-| Recall | 0,634 | 0,698 |
-| F1 | 0,649 | 0,654 |
-| ROC-AUC | 0,702 | 0,666 |
+| Algoritmo | gradient boosting | regressão logística |
+| Acurácia | 0,768 | 0,654 |
+| Precisão | 0,756 | 0,602 |
+| Recall | 0,685 | 0,571 |
+| F1 | 0,719 | 0,586 |
+| ROC-AUC | 0,804 | 0,714 |
+| Teto do ROC-AUC nesta carteira | 0,804 | 0,722 |
 
-Desempenho moderado é o resultado honesto: o processo gerador embute ruído
-deliberado. Métricas próximas de 1,0 num PoC como este indicariam vazamento de
-dados, não qualidade.
+O processo gerador embute ruído deliberado, e por isso há um teto: o ROC-AUC de
+um oráculo que conhece a fórmula do gerador. Os dois modelos estão praticamente
+nele. Um valor acima do teto seria impossível de forma legítima e indicaria
+vazamento de dados, não qualidade.
+
+A carteira é sintética e calibrada por números publicados. A proporção de
+imóveis com dívida (44%) é uma **hipótese** baseada na inadimplência medida em
+2018, porque a Sefin não publica esse número — detalhes no
+[Model Card](model-card.html#5-dados-de-treinamento).
 
 ### Priorização da cobrança
 
 A fila é ordenada por **retorno esperado** — o produto entre o valor da dívida e
 a probabilidade de recuperação. Ordenar apenas pela probabilidade privilegiaria
 dívidas pequenas e fáceis; apenas pelo valor, dívidas grandes e incobráveis. O
-produto equilibra os dois, e é a métrica que a Sefin usaria na prática.
+produto equilibra os dois.
+
+**A fila do modelo é melhor que uma regra simples?** Nas dívidas do conjunto
+de teste, trabalhar os 20% primeiros de cada fila alcança esta fração do valor
+**de fato recuperado**:
+
+| Fila ordenada por… | 20% primeiros | 50% primeiros |
+|---|---|---|
+| Modelo 2 (dívida × probabilidade) | **47,4%** | 81,3% |
+| Maiores dívidas primeiro | 43,8% | 75,0% |
+| Mais recentes primeiro | 31,5% | 67,1% |
+| Só a probabilidade do modelo | 24,7% | 61,4% |
+| Ordem aleatória | 20,0% | 50,0% |
+
+O modelo ganha da regra "maiores dívidas primeiro" por 3,7 pontos percentuais
+(IC 95% de 0,5 a 7,2): a diferença é real, mas pequena perto da que separa as
+duas da ordem aleatória. Quase todo o ganho vem de ordenar pelo valor.
+
+**Prescrição.** A fila ordena por retorno esperado e não considera o prazo de
+cinco anos da ação de cobrança (CTN, art. 174). Com isso, 826 dívidas
+(R$ 6,7 mi) que prescrevem em até 12 meses ficam espalhadas pela fila — só 84
+nos 20% primeiros, com posição mediana em 61% da fila —, e outras 1.536
+(R$ 12,7 mi), com 5 anos ou mais, ficam no fim. O painel e o assistente marcam
+esses casos. O alerta usa o tempo de inadimplência como
+aproximação e não conhece as causas que interrompem a prescrição (parcelamento,
+protesto, despacho de citação): ele indica o que conferir, e a situação de cada
+dívida é decisão da Procuradoria.
 
 ---
 

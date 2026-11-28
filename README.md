@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/DavidNadlerPrata/poc-inteligencia-tributaria-palmas/actions/workflows/ci.yml/badge.svg)](https://github.com/DavidNadlerPrata/poc-inteligencia-tributaria-palmas/actions/workflows/ci.yml)
 [![Python](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-blue)](https://www.python.org/)
-[![Testes](https://img.shields.io/badge/testes-183-brightgreen)](tests/)
+[![Testes](https://img.shields.io/badge/testes-222-brightgreen)](tests/)
 [![Cobertura](https://img.shields.io/badge/cobertura-90%25-brightgreen)](tests/)
 
 ## Publicações
@@ -97,6 +97,31 @@ O notebook de EDA da Sprint 2 (já vem executado; para regerá-lo do script):
 python notebooks/gerar_eda.py
 ```
 
+### Publicar o painel no Streamlit Community Cloud
+
+O painel funciona num servidor que só tem o que está no Git. Na primeira
+execução, ele roda `executar_poc.py --sem-rede` sozinho (cerca de 1 minuto) e
+gera banco, modelos e fila a partir da carteira sintética e da arrecadação
+real versionadas — sem chamar a API da Prefeitura.
+
+1. Entre em [share.streamlit.io](https://share.streamlit.io) com a conta do
+   GitHub e autorize o acesso ao repositório.
+2. **Create app** → repositório `DavidNadlerPrata/poc-inteligencia-tributaria-palmas`,
+   o branch desejado e o arquivo principal `app/painel.py`.
+3. Em **Advanced settings**, escolha Python 3.12 e cole os segredos:
+
+   ```toml
+   OPENROUTER_API_KEY = "sk-or-..."
+   SENHA_ASSISTENTE = "uma senha para a banca"
+   ```
+
+   Com `SENHA_ASSISTENTE` definida, a aba Assistente pede a senha antes do
+   chat: a chave do OpenRouter tem custo por pergunta. Sem a chave, o painel
+   funciona e a aba explica que o assistente está desativado.
+4. **Deploy.** A primeira abertura demora enquanto o pipeline roda; as
+   seguintes são imediatas. Defina também, no OpenRouter, um limite de crédito
+   para a chave.
+
 ---
 
 ## A questão dos dados — leia antes de tudo
@@ -173,7 +198,7 @@ correspondem ao código.
 
 ## Assistente de IA (arquitetura de agente)
 
-O pipeline de ML continua determinístico: split, treino, limiar, exclusão do
+O pipeline de ML continua determinístico: split, treino, corte de decisão, exclusão do
 IPTU Social e auditoria de fairness são código testado. O agente de IA entra
 **em volta** dele, onde o sistema conversa com pessoas: responder perguntas do
 servidor da Sefin, explicar a posição de um contribuinte na fila, resumir a
@@ -237,6 +262,7 @@ Toda pergunta, ferramenta chamada e resposta fica em
 | `src/etl.py` | Pipeline ETL, DDL do banco e visão analítica |
 | `src/modelo.py` | Treino dos dois modelos, fila de cobrança, interpretabilidade |
 | `src/fairness.py` | Paridade demográfica, igualdade de oportunidade, mitigação |
+| `src/priorizacao.py` | Comparação da fila com regras simples e alerta de prescrição (CTN, art. 174) |
 | `app/painel.py` | MVP — painel Streamlit de seis abas, incluindo o assistente de IA |
 | `src/ferramentas.py` | **Ferramentas do assistente** — funções somente leitura que o agente pode chamar |
 | `src/assistente.py` | **Agente de IA** — laço modelo ↔ ferramentas via OpenRouter, com registro de auditoria |
@@ -244,7 +270,7 @@ Toda pergunta, ferramenta chamada e resposta fica em
 | `app/tema.py` | Paleta validada e enxoval dos gráficos |
 | `notebooks/eda_sprint2.ipynb` | **Relatório de EDA da Sprint 2**, executado |
 | `notebooks/gerar_eda.py` | Script que gera o notebook (diff legível no Git) |
-| `tests/` | Suíte com 183 testes — `test_etica.py` é o mais importante |
+| `tests/` | Suíte com 222 testes — `test_etica.py` é o mais importante |
 | `data/carteira_contribuintes.csv` | **Carteira sintética versionada** — 20.000 registros, pronta para abrir |
 | `tests/fixtures/` | Amostra de dados reais para o CI rodar sem acessar a API |
 | `.github/workflows/ci.yml` | Integração contínua (GitHub Actions) |
@@ -265,38 +291,82 @@ Toda pergunta, ferramenta chamada e resposta fica em
 
 | | Modelo 1 — inadimplência | Modelo 2 — recuperabilidade |
 |---|---|---|
-| Acurácia | 0,652 | 0,620 |
-| Precisão | 0,664 | 0,616 |
-| Recall | 0,634 | 0,698 |
-| F1 | 0,649 | 0,654 |
-| ROC-AUC | 0,702 | 0,666 |
+| Algoritmo | gradient boosting | regressão logística |
+| Acurácia | 0,768 | 0,654 |
+| Precisão | 0,756 | 0,602 |
+| Recall | 0,685 | 0,571 |
+| F1 | 0,719 | 0,586 |
+| ROC-AUC | 0,804 | 0,714 |
+| Teto do ROC-AUC nesta carteira | 0,804 | 0,722 |
 
-Desempenho moderado é o resultado honesto: o processo gerador embute ruído
-deliberado. Métricas perto de 1,0 num PoC assim indicariam vazamento de dados.
+O processo gerador embute ruído deliberado, e por isso há um teto: o ROC-AUC de
+um oráculo que conhece a fórmula do gerador. Os dois modelos estão praticamente
+nele. O Modelo 2 usava gradient boosting e ficava em 0,686; a regressão
+logística chega a 0,714. Um modelo acima do teto indicaria vazamento de dados, e
+`tests/test_etica.py` falha nesse caso.
 
 ### Priorização
 
-- 15.361 contribuintes com dívida inscrita
-- Dívida na carteira: **R$ 62,8 milhões**
-- Retorno esperado: **R$ 29,5 milhões** (47,0%)
-- Os **20% melhores casos concentram 50,5%** do retorno esperado
+- 8.041 contribuintes com dívida inscrita na fila (43,8% da carteira tem dívida;
+  os beneficiários do IPTU Social ficam fora da fila)
+- Dívida na fila: **R$ 62,4 milhões**
+- Retorno esperado: **R$ 24,9 milhões** (40,0%)
+
+**A fila do modelo é melhor que uma regra simples?** Nas dívidas do conjunto
+de teste, trabalhar os 20% primeiros de cada fila alcança esta fração do valor
+**de fato recuperado**:
+
+| Fila ordenada por… | 20% primeiros | 50% primeiros |
+|---|---|---|
+| Modelo 2 (dívida × probabilidade) | **47,4%** | 81,3% |
+| Maiores dívidas primeiro | 43,8% | 75,0% |
+| Mais recentes primeiro | 31,5% | 67,1% |
+| Só a probabilidade do modelo | 24,7% | 61,4% |
+| Ordem aleatória | 20,0% | 50,0% |
+
+O modelo ganha da regra "maiores dívidas primeiro" por 3,7 pontos percentuais
+(IC 95% de 0,5 a 7,2): a diferença é real, mas pequena perto da que separa as
+duas da ordem aleatória. Quase todo o ganho vem de ordenar pelo valor.
+
+**Prescrição.** A fila ordena por retorno esperado e não considera o prazo de
+cinco anos da ação de cobrança (CTN, art. 174). Com isso, 826 dívidas
+(R$ 6,7 mi) que prescrevem em até 12 meses ficam espalhadas pela fila — só 84
+nos 20% primeiros, com posição mediana em 61% da fila —, e outras 1.536
+(R$ 12,7 mi), com 5 anos ou mais, ficam no fim. O painel e o assistente marcam
+esses casos (`src/priorizacao.py`). O alerta usa o tempo de inadimplência como
+aproximação e não conhece as causas que interrompem a prescrição (parcelamento,
+protesto, despacho de citação): ele indica o que conferir, e a situação de cada
+dívida é decisão da Procuradoria.
+
+A proporção de devedores é **hipótese**: 44%, a inadimplência no IPTU de Palmas
+medida em 2018. A Sefin não publica quantos imóveis têm dívida ativa. Fontes e
+escolhas da calibração no [Model Card](docs/MODEL_CARD.md), seção 5.
 
 ### Auditoria de justiça algorítmica
 
 | Modelo | Paridade Demográfica | Igualdade de Oportunidade | Resultado |
 |---|---|---|---|
-| 1 — inadimplência | 0,4745 | 0,4757 | **reprovado** |
-| 2 — recuperabilidade | 0,0475 | 0,0412 | aprovado |
+| 1 — inadimplência | 0,3322 | 0,3251 | **reprovado** (contra os setores pobres) |
+| 2 — recuperabilidade | 0,1217 | 0,0840 | **reprovado** na paridade (seleciona mais a faixa alta) |
+| 2, com corte calibrado por grupo | 0,0019 | 0,069 | aprovado |
 
-Mitigação por limiar calibrado por grupo: disparidade **0,0475 → 0,0006**.
+Limite de disparidade de 0,10: convenção do AI Fairness 360 (Bellamy et al., 2019); a regra
+dos quatro quintos da EEOC, que olha a razão entre as taxas, é a segunda
+referência. No Modelo 2 o intervalo de confiança de 95% por bootstrap vai de
+0,054 a 0,190 na paridade — contém o limite, porque o teste tem só 256 casos de
+renda alta. O critério, fixado antes, não muda por isso.
 
-**O achado central do PoC.** Dois modelos, mesmos dados, mesmo algoritmo,
-comportamentos éticos opostos. Perguntar *"quem provavelmente deve?"* produz um
-modelo que aprende sobre pobreza — morador de setor pobre tem 3,3× mais chance
-de ser sinalizado. Perguntar *"de quem se consegue recuperar?"* produz um modelo
-que aprende sobre processo de cobrança, e passa nos dois testes. **A escolha da
-variável-alvo é uma decisão ética, tomada antes da primeira linha de código de
-modelagem.** Discussão completa em [`docs/RIA.md`](docs/RIA.md), seção 2.
+**O achado central do PoC.** Duas escolhas feitas antes da auditoria mudaram o
+viés mais que qualquer ajuste depois dela. A **pergunta**: *"quem provavelmente
+deve?"* produz um modelo que aprende sobre pobreza — morador de setor pobre tem
+2,6× mais chance de ser sinalizado —, enquanto *"de quem se consegue
+recuperar?"* produz um modelo que aprende sobretudo sobre o processo de
+cobrança. E o **algoritmo**: com gradient boosting, o Modelo 2 reconstruía a
+renda por substitutos como valor venal e distância ao centro e reprovava nos
+dois testes; com regressão logística, passa na igualdade de oportunidade e
+reprova só na paridade. Nenhuma das duas elimina o viés: o Modelo 2 só ordena a
+fila com o corte calibrado por grupo. Discussão completa em
+[`docs/RIA.md`](docs/RIA.md), seção 2.
 
 ---
 
@@ -313,7 +383,7 @@ modelagem.** Discussão completa em [`docs/RIA.md`](docs/RIA.md), seção 2.
 ## Testes
 
 ```bash
-python -m pytest          # 183 testes, ~1 min
+python -m pytest          # 222 testes, ~1 min
 ```
 
 | Arquivo | O que cobre |
@@ -324,6 +394,7 @@ python -m pytest          # 183 testes, ~1 min
 | `tests/test_modelo_coleta.py` | Métricas dos modelos, interpretabilidade, retry e paginação da API (com dublês, sem rede) |
 | `tests/test_ferramentas.py` | Ferramentas do assistente: nenhuma saída cita beneficiário do IPTU Social, banco somente leitura, validação de argumentos, coerência com a fila do pipeline |
 | `tests/test_assistente.py` | Laço do agente com o modelo substituído por roteiro: execução de ferramentas, erros, limite de passos, histórico, auditoria, cliente HTTP |
+| `tests/test_priorizacao.py` | Alerta de prescrição nas fronteiras de 4 e 5 anos, comparação de filas contra casos calculados à mão, bootstrap da diferença |
 
 `test_etica.py` existe porque o Model Card afirma que a exclusão do IPTU Social
 deve ser *"verificada por teste automatizado, não por disciplina de quem opera"*.
@@ -332,7 +403,7 @@ exclusão do grupo protegido, o filtro da fila e a fórmula do retorno esperado 
 em cada caso os testes correspondentes falharam, confirmando que detectam
 regressão real e não apenas acompanham o código.
 
-Cobertura atual: **94%** das linhas de `src/`.
+Cobertura atual: **95%** das linhas de `src/`.
 
 ## Integração contínua
 
@@ -387,7 +458,7 @@ Este PoC é ponto de partida, não linha de chegada. Caminhos de evolução:
 3. **Explorar outras fontes.** O portal traz também contratos, licitações,
    despesas e folha. Há projeto ali.
 4. **Aprofundar a modelagem.** Comparar algoritmos com justificativa empírica,
-   calibrar limiares por custo real de diligência, testar séries temporais.
+   calibrar cortes de decisão por custo real de diligência, testar séries temporais.
 5. **Melhorar a explicação.** Trocar importância global por SHAP local, que
    responde "por que eu?" em vez de "o que o modelo olha em média".
 6. **Resolver a pendência do achado 2 da EDA.** A receita de dezembro é quase

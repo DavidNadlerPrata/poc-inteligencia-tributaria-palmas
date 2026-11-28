@@ -288,9 +288,8 @@ md("""
 > **Achado 4.** `valor_venal` e `valor_divida_consolidada` têm **assimetria
 > forte à direita**: a média fica muito acima da mediana. Poucos imóveis de alto
 > valor puxam a média. Consequências práticas: usar a mediana para descrever a
-> carteira, e preferir modelos baseados em árvores — que não se incomodam com
-> distribuições assimétricas — a modelos lineares, que exigiriam transformação
-> logarítmica.
+> carteira e, em modelos lineares, aplicar transformação logarítmica a esses
+> atributos. Modelos baseados em árvores dispensam a transformação.
 """),
 
 code("""
@@ -434,7 +433,9 @@ md("""
 ---
 ## 4. O que prevê o quê
 
-Correlações entre atributos e os dois alvos candidatos.
+Correlações entre atributos e os dois alvos candidatos, cada um na sua
+população: a inadimplência em toda a carteira, a recuperação só entre quem tem
+dívida inscrita.
 """),
 
 code("""
@@ -444,12 +445,16 @@ numericas = ["area_construida_m2", "valor_venal", "valor_iptu_anual",
              "qtd_parcelamentos_anteriores", "parcelamento_rompido",
              "qtd_notificacoes"]
 
-alvos = ["inadimplente_proximo_exercicio", "divida_recuperada_12m"]
-correlacoes = dados[numericas + alvos].corr()[alvos].drop(index=alvos)
+def correlacao_com(base, alvo):
+    return base[numericas + [alvo]].corr()[alvo].drop(alvo)
 
-comparativo = correlacoes.rename(columns={
-    "inadimplente_proximo_exercicio": "inadimplência",
-    "divida_recuperada_12m": "recuperação"}).round(3)
+# A recuperacao so existe para quem tem divida. Correlacionar na carteira
+# inteira mediria "ter divida" (quem nao deve entra com recuperacao zero), e
+# nao "recuperar". Por isso cada alvo e medido na sua propria populacao.
+comparativo = pd.DataFrame({
+    "inadimplência": correlacao_com(dados, "inadimplente_proximo_exercicio"),
+    "recuperação": correlacao_com(com_divida, "divida_recuperada_12m"),
+}).round(3)
 comparativo.reindex(comparativo["inadimplência"].abs().sort_values(ascending=False).index)
 """),
 
@@ -553,7 +558,7 @@ md("""
 | 1 | Códigos de receita são hierárquicos (superestimação de 6,6×) | Fixar nível antes de agregar; nunca somar a coluna inteira |
 | 2 | Pico atípico em dezembro na receita total | Investigar a natureza do valor antes de usar a série |
 | 3 | IPTU tem sazonalidade própria (pico em março) | Mês como variável; acompanhar a série do próprio tributo |
-| 4 | Valores fortemente assimétricos | Modelos de árvore em vez de lineares; mediana para descrever |
+| 4 | Valores fortemente assimétricos | Log nos modelos lineares (árvores dispensam); mediana para descrever |
 | 5 | Dívida concentrada em poucos devedores | Ordenar por valor esperado, não só por probabilidade |
 | 6 | **Mais casos ≠ mais dinheiro** | **Dois modelos com papéis distintos; priorização pelo de recuperabilidade** |
 | 7 | Alvos governados por atributos diferentes | Treinos separados, não um modelo multitarefa |
@@ -563,8 +568,9 @@ md("""
 ### Decisões que a EDA sustenta
 
 1. **Dois modelos, não um.** Achados 6 e 7.
-2. **`HistGradientBoostingClassifier`.** Achado 4: assimetria e não linearidade
-   sem exigir normalização.
+2. **Algoritmo escolhido modelo a modelo.** Achado 4: gradient boosting no
+   Modelo 1, sem transformação; regressão logística com valores em log no
+   Modelo 2, onde o gradient boosting sobreajustava com poucos casos.
 3. **Priorizar por `valor_divida × P(recuperação)`.** Achado 5.
 4. **Faixa de renda fora dos preditores.** Achado 6: correlação com renda existe
    e é justamente o que a auditoria da Sprint 4 precisa medir sem contaminação.

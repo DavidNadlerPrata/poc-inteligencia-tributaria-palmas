@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import sqlite3
 
+import numpy as np
 import pandas as pd
 import pytest
 
@@ -151,6 +152,65 @@ class TestCalibracao:
         assert por_renda["baixa"] > por_renda["media"] > por_renda["alta"]
 
 
+@pytest.fixture(scope="module")
+def carteira_completa():
+    """Carteira no tamanho do PoC: com 20.000 registros, o ruido de amostragem
+    das proporcoes fica perto de 0,35 ponto percentual."""
+    return sintetico.gerar_carteira()
+
+
+class TestCalibracaoDosDevedores:
+    """Proporcao de devedores, inadimplencia anual e grandezas monetarias.
+
+    As referencias e a hipotese adotada estao em config.py e no Model Card,
+    secao 5.
+    """
+
+    def test_proporcao_de_devedores(self, carteira_completa):
+        obtida = (carteira_completa["valor_divida_consolidada"] > 0).mean()
+        assert obtida == pytest.approx(config.PROPORCAO_COM_DIVIDA, abs=0.015)
+
+    def test_inadimplencia_anual(self, carteira_completa):
+        obtida = carteira_completa["inadimplente_proximo_exercicio"].mean()
+        assert obtida == pytest.approx(config.INADIMPLENCIA_ANUAL, abs=0.015)
+
+    def test_iptu_compativel_com_a_arrecadacao_real(self, carteira_completa):
+        """R$ 43 mi pagos a vista por 51.421 contribuintes em 2026 (com desconto)
+        dao cerca de R$ 840 por imovel. Reescalar o IPTU junto com a divida, como
+        a primeira versao fazia, levaria a media para perto de R$ 5 mil."""
+        assert 700 < carteira_completa["valor_iptu_anual"].mean() < 1_400
+
+    def test_encargos_plausiveis(self, carteira_completa):
+        """Divida sobre o IPTU dos exercicios em aberto: multa, juros e correcao."""
+        devedores = carteira_completa[carteira_completa["valor_divida_consolidada"] > 0]
+        principal = (devedores["valor_iptu_anual"] * devedores["exercicios_inadimplentes_5a"]).sum()
+        fator = devedores["valor_divida_consolidada"].sum() / principal
+        assert 1.5 < fator < 3.0
+
+    def test_devedor_e_recorrente(self, carteira_completa):
+        devedores = carteira_completa[carteira_completa["valor_divida_consolidada"] > 0]
+        assert devedores["exercicios_inadimplentes_5a"].mean() > 3
+
+    def test_vies_por_renda_sobrevive_a_calibracao(self, carteira_completa):
+        tem_divida = carteira_completa["valor_divida_consolidada"] > 0
+        por_renda = tem_divida.groupby(carteira_completa["faixa_renda_setor"]).mean()
+        assert por_renda["baixa"] > por_renda["media"] > por_renda["alta"]
+
+
+class TestBisseccao:
+
+    @pytest.mark.parametrize("alvo", [0.10, 0.44, 0.83])
+    def test_encontra_o_deslocamento(self, alvo):
+        propensao = np.random.default_rng(0).normal(0, 1.2, 5_000)
+        deslocamento = sintetico._deslocamento_para_proporcao(propensao, alvo)
+        assert sintetico._sigmoide(propensao + deslocamento).mean() == pytest.approx(alvo, abs=1e-9)
+
+    @pytest.mark.parametrize("alvo", [0.0, 1.0, -0.2, 1.5])
+    def test_recusa_proporcao_impossivel(self, alvo):
+        with pytest.raises(ValueError):
+            sintetico._deslocamento_para_proporcao(np.zeros(10), alvo)
+
+
 class TestEsquemaDoBanco:
 
     def test_tabelas_criadas(self, carteira, banco_temporario):
@@ -244,3 +304,32 @@ class TestLimpezaDaArrecadacao:
         limpo = etl._limpar_arrecadacao(bruto)
         assert limpo["valor_orcado"].notna().all()
         assert (limpo["valor_orcado"] >= 0).all()
+
+
+class TestProbabilidadesVerdadeiras:
+    """As chances que o gerador sorteou, usadas para medir o teto de desempenho."""
+
+    @pytest.fixture(scope="class")
+    def geradas(self):
+        return sintetico.probabilidades_verdadeiras(n=3_000, semente=config.SEMENTE)
+
+    def test_carteira_e_a_mesma_de_gerar_carteira(self, geradas):
+        carteira, _ = geradas
+        pd.testing.assert_frame_equal(
+            carteira, sintetico.gerar_carteira(n=3_000, semente=config.SEMENTE))
+
+    def test_chances_sao_probabilidades_alinhadas_a_carteira(self, geradas):
+        carteira, chances = geradas
+        assert (chances["id_contribuinte"] == carteira["id_contribuinte"]).all()
+        valores = chances.drop(columns="id_contribuinte").to_numpy()
+        assert ((valores > 0) & (valores < 1)).all()
+
+    def test_chance_media_de_inadimplencia_e_a_calibrada(self, geradas):
+        _, chances = geradas
+        assert chances["prob_inadimplencia_com_ruido"].mean() == pytest.approx(
+            config.INADIMPLENCIA_ANUAL, abs=1e-6)
+
+    def test_teto_absoluto_supera_o_alcancavel(self):
+        teto = sintetico.teto_de_desempenho(n=3_000, semente=config.SEMENTE)
+        for nome in ("inadimplencia", "recuperabilidade"):
+            assert 0.5 < teto[nome]["alcancavel"]["roc_auc"] < teto[nome]["absoluto"]["roc_auc"] < 1

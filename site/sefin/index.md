@@ -46,9 +46,9 @@ O retorno esperado — valor multiplicado pela probabilidade — equilibra os do
 ## O que a prova de conceito demonstrou
 
 <div class="cartoes">
-<div class="cartao"><div class="valor">50%</div><div class="rotulo">do resultado alcançado ao trabalhar apenas os 20% melhores casos</div></div>
-<div class="cartao"><div class="valor">80%</div><div class="rotulo">do resultado alcançado na metade da carteira</div></div>
-<div class="cartao"><div class="valor">3 em 10</div><div class="rotulo">casos classificados em faixa de alta ou baixa recuperabilidade — os demais exigem análise</div></div>
+<div class="cartao"><div class="valor">52%</div><div class="rotulo">do resultado alcançado ao trabalhar apenas os 20% melhores casos</div></div>
+<div class="cartao"><div class="valor">82%</div><div class="rotulo">do resultado alcançado na metade da carteira</div></div>
+<div class="cartao"><div class="valor">4 em 10</div><div class="rotulo">casos classificados em faixa de alta ou baixa recuperabilidade — os demais exigem análise</div></div>
 </div>
 
 O achado central é a **concentração**: o retorno não se distribui por igual pela
@@ -57,14 +57,31 @@ desproporcional do que se consegue recuperar.
 
 | Parcela da carteira trabalhada | Retorno alcançado |
 |---|---|
-| 10% dos casos | 33,6% |
-| **20% dos casos** | **50,5%** |
-| 30% dos casos | 62,9% |
-| 50% dos casos | 80,5% |
+| 10% dos casos | 34,3% |
+| **20% dos casos** | **51,7%** |
+| 30% dos casos | 64,2% |
+| 50% dos casos | 81,9% |
 
 Em termos operacionais: se a equipe consegue trabalhar bem um quinto da
 carteira por ciclo, a diferença entre escolher esse quinto ao acaso e escolhê-lo
-pelo retorno esperado é da ordem de **duas vezes e meia** no resultado.
+pelo retorno esperado é de **duas vezes e meia** no resultado.
+
+### Comparado com uma regra simples
+
+A comparação que importa não é com o acaso, e sim com o que a equipe faria sem
+o sistema — por exemplo, cobrar primeiro as maiores dívidas. Medimos isso com o
+valor **de fato recuperado** em dívidas que o sistema não usou no aprendizado:
+
+| Trabalhando os 20% primeiros casos de cada fila | Valor recuperado alcançado |
+|---|---|
+| Fila do sistema | **47%** |
+| Maiores dívidas primeiro | 44% |
+| Ordem aleatória | 20% |
+
+O sistema é melhor que a regra simples, mas por pouco: cerca de 4 pontos.
+Quase todo o ganho vem de priorizar pelo valor. Por isso o piloto proposto
+compara o sistema com o critério que a equipe já usa — se a diferença for
+pequena também nos dados reais, uma regra simples pode bastar.
 
 <div class="aviso">
 <p><strong>Estes percentuais vêm de uma simulação, não de dados reais de contribuintes.</strong></p>
@@ -115,9 +132,10 @@ legítimas. A prova de conceito as tratou explicitamente:
 - **Beneficiários do IPTU Social ficam fora do sistema.** Idosos, aposentados,
   pensionistas e pessoas com deficiência de baixa renda são excluídos de toda
   ação preditiva de cobrança — por construção, não por procedimento.
-- **O sistema foi auditado quanto ao tratamento entre regiões da cidade.** A
-  diferença de tratamento entre setores de renda alta, média e baixa ficou
-  abaixo do limiar técnico adotado.
+- **O sistema foi auditado quanto ao tratamento entre regiões da cidade.** Sem
+  ajuste, a diferença de tratamento entre setores de renda alta, média e baixa
+  passou do limite técnico adotado; com o ajuste por região, publicado e
+  verificável, ficou abaixo dele.
 - **Nenhum dado pessoal foi utilizado** na construção desta prova de conceito.
 - **Todo contribuinte pode contestar** sua classificação e obter revisão humana,
   conforme o Art. 20 da Lei Geral de Proteção de Dados.

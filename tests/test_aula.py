@@ -104,10 +104,10 @@ class TestTrilhaExecuta:
         assert (namespace["treino_rec"]["valor_divida_consolidada"] > 0).all()
         assert (namespace["teste_rec"]["valor_divida_consolidada"] > 0).all()
 
-    def test_limiar_e_uma_probabilidade(self, trilha):
+    def test_corte_e_uma_probabilidade(self, trilha):
         namespace, _ = trilha
-        assert isinstance(namespace["LIMIAR"], float)
-        assert 0.0 < namespace["LIMIAR"] < 1.0
+        assert isinstance(namespace["CORTE"], float)
+        assert 0.0 < namespace["CORTE"] < 1.0
 
 
 class TestArtefatos:
@@ -130,11 +130,11 @@ class TestArtefatos:
         assert set(registro["metricas_teste"]) >= {"acuracia", "precisao", "recall",
                                                    "f1", "roc_auc", "matriz_confusao"}
 
-    def test_limiar_registrado_nos_metadados(self, trilha):
+    def test_corte_registrado_nos_metadados(self, trilha):
         namespace, raiz_tmp = trilha
         registro = json.loads(
             (raiz_tmp / "models" / "modelo_inadimplencia.json").read_text(encoding="utf-8"))
-        assert registro["limiar_decisao"] == namespace["LIMIAR"]
+        assert registro["corte_decisao"] == namespace["CORTE"]
 
     @pytest.mark.parametrize("arquivo", [
         "avaliacao_teste_inadimplencia.csv",

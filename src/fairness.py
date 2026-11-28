@@ -13,8 +13,12 @@ externa -- as formulas sao curtas e explicita-las tem valor pedagogico.
    o sistema acerta os casos positivos com a mesma competencia em todo grupo.
        EOD = max_a TPR_a - min_a TPR_a
 
-Leitura das metricas: 0 e paridade perfeita. A literatura (Barocas, Hardt e
-Narayanan, 2023) trata diferencas acima de 0,10 como materialmente relevantes.
+Leitura das metricas: 0 e paridade perfeita. O limite de disparidade de 0,10 para
+a diferenca e a convencao do AI Fairness 360 (Bellamy et al., IBM, 2019), que
+considera justa a diferenca de paridade entre -0,1 e 0,1. A referencia juridica
+mais antiga e a regra dos quatro quintos da EEOC (1978): razao entre taxas de
+selecao de ao menos 0,8 -- que Barocas, Hardt e Narayanan (2023) tratam como
+referencia, nao como regra estrita. Por isso o laudo informa diferenca e razao.
 Os dois criterios sao matematicamente incompativeis quando a prevalencia real
 difere entre grupos -- e o caso aqui, e o RIA discute a escolha.
 """
@@ -24,7 +28,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-LIMIAR_ALERTA = 0.10
+LIMITE_DISPARIDADE = 0.10
 
 
 def metricas_por_grupo(dados: pd.DataFrame, coluna_grupo: str,
@@ -62,7 +66,7 @@ def paridade_demografica(por_grupo: pd.DataFrame) -> dict:
         "razao": round(minimo / maximo, 4) if maximo > 0 else float("nan"),
         "grupo_mais_selecionado": por_grupo.loc[taxas.idxmax(), "grupo"],
         "grupo_menos_selecionado": por_grupo.loc[taxas.idxmin(), "grupo"],
-        "aprovado": bool((maximo - minimo) <= LIMIAR_ALERTA),
+        "aprovado": bool((maximo - minimo) <= LIMITE_DISPARIDADE),
     }
 
 
@@ -77,7 +81,7 @@ def igualdade_oportunidade(por_grupo: pd.DataFrame) -> dict:
         "razao": round(minimo / maximo, 4) if maximo > 0 else float("nan"),
         "grupo_melhor_atendido": por_grupo.loc[tpr.idxmax(), "grupo"],
         "grupo_pior_atendido": por_grupo.loc[tpr.idxmin(), "grupo"],
-        "aprovado": bool((maximo - minimo) <= LIMIAR_ALERTA),
+        "aprovado": bool((maximo - minimo) <= LIMITE_DISPARIDADE),
     }
 
 
@@ -95,7 +99,7 @@ def auditar(dados: pd.DataFrame, coluna_grupo: str = "faixa_renda_setor",
     for teste in (dp, eo):
         status = "OK" if teste["aprovado"] else "ALERTA"
         print(f"\n[{status}] {teste['metrica']}: diferenca = {teste['diferenca']:.4f} "
-              f"(limiar {LIMIAR_ALERTA:.2f}), razao = {teste['razao']:.4f}")
+              f"(limite {LIMITE_DISPARIDADE:.2f}), razao = {teste['razao']:.4f}")
 
     if not dp["aprovado"]:
         print(f"  -> '{dp['grupo_mais_selecionado']}' e selecionado com muito mais "
@@ -109,27 +113,75 @@ def auditar(dados: pd.DataFrame, coluna_grupo: str = "faixa_renda_setor",
             "igualdade_oportunidade": eo}
 
 
+def intervalo_bootstrap(dados: pd.DataFrame, coluna_grupo: str = "faixa_renda_setor",
+                        col_real: str = "y_real", col_pred: str = "y_pred",
+                        n_reamostras: int = 2000, nivel: float = 0.95,
+                        semente: int = 42) -> dict:
+    """Intervalo de confianca por bootstrap para as duas diferencas.
+
+    Reamostra os registros com reposicao DENTRO de cada grupo -- o tamanho de
+    cada grupo fica igual ao do teste -- e recalcula as diferencas de taxa de
+    selecao e de recall. O intervalo e o dos percentis da distribuicao obtida.
+
+    Mede a incerteza de amostragem do conjunto de teste: com poucos casos num
+    grupo, uma diferenca de 0,12 pode ser ruido. NAO mede a variacao que viria
+    de treinar o modelo de novo, nem muda o criterio de aprovacao, que continua
+    sendo a estimativa pontual contra o limite fixado antes da auditoria.
+
+    Cuidado de leitura: a diferenca e o maximo menos o minimo de tres taxas, e
+    o ruido infla o maximo. O intervalo tende, portanto, a ficar um pouco
+    deslocado para cima.
+    """
+    rng = np.random.default_rng(semente)
+    selecao, recall = [], []
+    for _, bloco in dados.groupby(coluna_grupo):
+        real = bloco[col_real].to_numpy()
+        pred = bloco[col_pred].to_numpy()
+        indices = rng.integers(0, len(bloco), size=(n_reamostras, len(bloco)))
+        real_r, pred_r = real[indices], pred[indices]
+        selecao.append(pred_r.mean(axis=1))
+        positivos = real_r == 1
+        with np.errstate(invalid="ignore"):
+            recall.append((pred_r * positivos).sum(axis=1) / positivos.sum(axis=1))
+
+    cauda = (1 - nivel) / 2 * 100
+    resultado = {"n_reamostras": n_reamostras, "nivel": nivel}
+    pontuais = {"paridade_demografica": paridade_demografica,
+                "igualdade_oportunidade": igualdade_oportunidade}
+    por_grupo = metricas_por_grupo(dados, coluna_grupo, col_real, col_pred)
+    for nome, taxas in (("paridade_demografica", selecao), ("igualdade_oportunidade", recall)):
+        matriz = np.vstack(taxas)
+        diferencas = np.nanmax(matriz, axis=0) - np.nanmin(matriz, axis=0)
+        resultado[nome] = {
+            "diferenca": pontuais[nome](por_grupo)["diferenca"],
+            "ic_inferior": round(float(np.nanpercentile(diferencas, cauda)), 4),
+            "ic_superior": round(float(np.nanpercentile(diferencas, 100 - cauda)), 4),
+            "prob_acima_do_limite": round(float(np.nanmean(diferencas > LIMITE_DISPARIDADE)), 4),
+        }
+    return resultado
+
+
 def simular_mitigacao(dados: pd.DataFrame, coluna_grupo: str = "faixa_renda_setor",
                       col_prob: str = "y_prob", col_real: str = "y_real") -> pd.DataFrame:
-    """Mitigacao por limiar especifico de grupo (post-processing de Hardt et al.).
+    """Mitigacao por corte especifico de grupo (post-processing de Hardt et al.).
 
-    Em vez de um corte unico em 0,5, calibra o limiar de cada grupo para igualar
+    Em vez de um corte unico em 0,5, calibra o corte de cada grupo para igualar
     a taxa de selecao. E a tecnica menos invasiva: nao exige retreinar o modelo
     nem alterar os dados, apenas ajustar a regra de decisao -- e e auditavel,
-    porque o limiar de cada grupo fica explicito e documentado.
+    porque o corte de cada grupo fica explicito e documentado.
     """
     alvo = float((dados[col_prob] >= 0.5).mean())
 
     linhas = []
     for grupo, bloco in dados.groupby(coluna_grupo):
-        limiar = float(np.quantile(bloco[col_prob], 1 - alvo))
-        pred = (bloco[col_prob] >= limiar).astype(int)
+        corte = float(np.quantile(bloco[col_prob], 1 - alvo))
+        pred = (bloco[col_prob] >= corte).astype(int)
         real = bloco[col_real].to_numpy()
         positivos = real == 1
 
         linhas.append({
             "grupo": grupo,
-            "limiar_calibrado": round(limiar, 4),
+            "corte_calibrado": round(corte, 4),
             "taxa_selecao_antes": round(float((bloco[col_prob] >= 0.5).mean()), 4),
             "taxa_selecao_depois": round(float(pred.mean()), 4),
             "recall_depois": round(float(pred[positivos].mean()) if positivos.any() else np.nan, 4),
@@ -139,7 +191,7 @@ def simular_mitigacao(dados: pd.DataFrame, coluna_grupo: str = "faixa_renda_seto
 
     antes = resultado["taxa_selecao_antes"]
     depois = resultado["taxa_selecao_depois"]
-    print("\n=== Simulacao de mitigacao (limiar por grupo) ===")
+    print("\n=== Simulacao de mitigacao (corte por grupo) ===")
     print(resultado.to_string(index=False))
     print(f"\nDisparidade na taxa de selecao: {antes.max() - antes.min():.4f} -> "
           f"{depois.max() - depois.min():.4f}")

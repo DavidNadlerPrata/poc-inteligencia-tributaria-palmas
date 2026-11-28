@@ -129,7 +129,13 @@ def calcular_marcadores(ns: dict, raiz_tmp: Path) -> dict[str, str]:
     import numpy as np
     import pandas as pd
     from sklearn.linear_model import LogisticRegression
-    from sklearn.metrics import f1_score, precision_score, recall_score, roc_auc_score
+    from sklearn.metrics import (
+        accuracy_score,
+        f1_score,
+        precision_score,
+        recall_score,
+        roc_auc_score,
+    )
     from sklearn.model_selection import train_test_split
 
     m: dict[str, str] = {}
@@ -192,25 +198,32 @@ def calcular_marcadores(ns: dict, raiz_tmp: Path) -> dict[str, str]:
     # ---- Secao 5
     placar = ns["placar"]
     m["tabela_placar_baselines"] = tabela_placar(placar, com_f1=True)
-    assert placar.loc[placar["f1"].idxmax(), "modelo"].startswith("trivial"), \
-        "o trivial deixou de ter o melhor F1: reescreva a secao 5"
+    trivial = placar.loc[placar["modelo"].str.startswith("trivial")].iloc[0]
+    assert trivial["f1"] == 0, \
+        "o trivial deixou de prever so 'adimplente' (F1 zero): reescreva a secao 5"
 
-    prob_val, y_val, limiar = ns["prob_val"], ns["y_val"], ns["LIMIAR"]
+    prob_val, y_val, corte_escolhido = ns["prob_val"], ns["y_val"], ns["CORTE"]
     linhas = []
     for corte in (0.35, 0.40, 0.45, 0.50, 0.55):
         previsto = prob_val >= corte
         linhas.append([dec(corte, 2), dec(f1_score(y_val, previsto)),
                        dec(precision_score(y_val, previsto), 3),
                        dec(recall_score(y_val, previsto), 3)])
-    m["tabela_limiares"] = tabela_md(["Limiar", "F1", "Precisão", "Recall"], linhas)
+    m["tabela_cortes"] = tabela_md(["Corte", "F1", "Precisão", "Recall"], linhas)
 
     p = float(np.mean(y_val))
-    f1_trivial = 2 * p / (p + 1)
-    f1_no_limiar = f1_score(y_val, prob_val >= limiar)
-    assert f1_no_limiar > f1_trivial, "no melhor limiar o modelo nao supera o trivial"
-    m["lim_melhor"], m["LIMIAR"] = dec(limiar, 2), dec(limiar, 2)
-    m["f1_melhor"] = dec(f1_no_limiar)
-    m["f1_trivial_val"] = dec(f1_trivial)
+    assert p < 0.5, "a classe majoritaria deixou de ser 'adimplente': reescreva a secao 5"
+    acc_trivial = 1 - p
+    acc_modelo_50 = accuracy_score(y_val, prob_val >= 0.5)
+    assert acc_modelo_50 > acc_trivial + 0.05, "o modelo nao supera a acuracia do trivial"
+    f1_50 = f1_score(y_val, prob_val >= 0.5)
+    f1_no_corte = f1_score(y_val, prob_val >= corte_escolhido)
+    assert 0 <= f1_no_corte - f1_50 < 0.03, \
+        "o corte passou a mudar muito o F1: reescreva o paragrafo apos a tabela de cortes"
+    m["prev_val"], m["acc_trivial"] = pct(p), pct(acc_trivial)
+    m["acc_modelo_50"] = pct(acc_modelo_50)
+    m["corte_melhor"], m["CORTE"] = dec(corte_escolhido, 2), dec(corte_escolhido, 2)
+    m["f1_50"], m["f1_melhor"] = dec(f1_50), dec(f1_no_corte)
 
     # ---- Secao 6
     pf = ns["placar_final"].reset_index(drop=True)
@@ -222,9 +235,9 @@ def calcular_marcadores(ns: dict, raiz_tmp: Path) -> dict[str, str]:
     m["log_auc"], m["rf_auc"] = dec(log_auc, 3), dec(rf_auc, 3)
     m["dif_auc"] = dec(log_auc - rf_auc, 3)
 
-    # ---- Secao 7: a troca do limiar, medida na validacao
-    assert limiar < 0.5, "o limiar escolhido nao favorece recall: reescreva a secao 7"
-    em50, emlim = prob_val >= 0.5, prob_val >= limiar
+    # ---- Secao 7: a troca do corte, medida na validacao
+    assert corte_escolhido < 0.5, "o corte escolhido nao favorece recall: reescreva a secao 7"
+    em50, emlim = prob_val >= 0.5, prob_val >= corte_escolhido
     vp50, vplim = int((em50 & (y_val == 1)).sum()), int((emlim & (y_val == 1)).sum())
     fp50, fplim = int((em50 & (y_val == 0)).sum()), int((emlim & (y_val == 0)).sum())
     rec50, reclim = recall_score(y_val, em50), recall_score(y_val, emlim)
@@ -268,6 +281,11 @@ def calcular_marcadores(ns: dict, raiz_tmp: Path) -> dict[str, str]:
     m["cal_alta_prev"], m["cal_alta_obs"] = pct(cal.loc["alta", "prob_media_prevista"], 0), pct(cal.loc["alta", "taxa_observada"], 0)
     m["cal_baixa_prev"], m["cal_baixa_obs"] = pct(cal.loc["baixa", "prob_media_prevista"], 0), pct(cal.loc["baixa", "taxa_observada"], 0)
     m["pct_media"] = pct(cal.loc["media", "casos"] / cal["casos"].sum(), 0)
+    diferencas = (cal["prob_media_prevista"] - cal["taxa_observada"]).abs()
+    assert diferencas.max() < 0.10, \
+        "previsto e observado se afastaram: o texto diz que 'acompanham' (secao 8)"
+    m["cal_max_dif"] = f"{diferencas.max() * 100:.0f}"
+    m["cal_faixa_dif"] = diferencas.idxmax()
 
     # ---- Secao 9
     tamanho = sum(a.stat().st_size for a in (raiz_tmp / "models").glob("modelo_*.joblib"))

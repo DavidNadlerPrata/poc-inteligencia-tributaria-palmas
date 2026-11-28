@@ -16,7 +16,10 @@ Seis abas:
 
 from __future__ import annotations
 
+import hmac
 import json
+import os
+import subprocess
 import sys
 from pathlib import Path
 
@@ -30,6 +33,7 @@ sys.path.insert(0, str(RAIZ / "src"))
 
 import assistente as assistente_ia  # noqa: E402
 import config  # noqa: E402
+import priorizacao  # noqa: E402
 from app import tema  # noqa: E402
 
 st.set_page_config(page_title="Inteligencia Tributaria | Palmas-TO",
@@ -37,10 +41,57 @@ st.set_page_config(page_title="Inteligencia Tributaria | Palmas-TO",
 
 
 # --------------------------------------------------------------------------
+# Primeira execucao num servidor novo (ex.: Streamlit Community Cloud)
+# --------------------------------------------------------------------------
+OBRIGATORIOS = [config.BANCO, config.MODELO_INADIMPLENCIA, config.MODELO_RECUPERABILIDADE,
+                config.METRICAS, config.DADOS / "fila_cobranca.csv"]
+
+
+@st.cache_resource(show_spinner=False)
+def preparar_artefatos() -> None:
+    """Gera banco, modelos e fila quando o servidor so tem o que esta no Git.
+
+    Roda `executar_poc.py --sem-rede`: usa a carteira sintetica e a arrecadacao
+    versionadas, sem nenhuma chamada a API da Prefeitura. O cache_resource
+    garante uma unica execucao por servidor, mesmo com varios acessos ao mesmo
+    tempo.
+    """
+    resultado = subprocess.run(
+        [sys.executable, str(RAIZ / "executar_poc.py"), "--sem-rede"],
+        cwd=RAIZ, capture_output=True, text=True, timeout=1800,
+        env={**os.environ, "PYTHONIOENCODING": "utf-8"})
+    if resultado.returncode != 0:
+        raise RuntimeError("o pipeline falhou ao preparar os dados: "
+                           + resultado.stdout[-1500:] + resultado.stderr[-1500:])
+
+
+if any(not arquivo.exists() for arquivo in OBRIGATORIOS):
+    with st.spinner("Primeira execução neste servidor: gerando banco, modelos e fila de "
+                    "cobrança a partir da carteira sintética. Leva alguns minutos."):
+        preparar_artefatos()
+
+
+# --------------------------------------------------------------------------
 # Carga de dados (em cache: o painel nao recalcula a cada interacao)
 # --------------------------------------------------------------------------
-@st.cache_data
-def carregar():
+ARTEFATOS = [config.BANCO, config.METRICAS, config.CSV_ARRECADACAO,
+             config.DADOS / "fila_cobranca.csv", config.DADOS / "auditoria_fairness.json",
+             config.DADOS / "mitigacao_fairness.csv", config.DADOS / "importancia_atributos.csv",
+             config.DADOS / "teto_desempenho.json", config.DADOS / "comparacao_ordenacoes.json"]
+
+
+def versao_dos_artefatos() -> tuple:
+    """Data de modificacao de cada arquivo lido pelo painel.
+
+    Entra como argumento de carregar(): quando o pipeline roda de novo, a versao
+    muda e o cache e refeito. Sem isso, o painel aberto continuaria mostrando
+    os resultados da execucao anterior ate o servidor ser reiniciado.
+    """
+    return tuple(a.stat().st_mtime_ns if a.exists() else None for a in ARTEFATOS)
+
+
+@st.cache_data(max_entries=2)
+def carregar(versao: tuple):  # versao so compoe a chave do cache
     import etl
 
     if not config.BANCO.exists():
@@ -52,6 +103,9 @@ def carregar():
     caminho_fila = config.DADOS / "fila_cobranca.csv"
     if caminho_fila.exists():
         fila = pd.read_csv(caminho_fila, sep=";")
+        # Recalculado aqui para funcionar tambem com filas geradas antes do alerta.
+        fila["alerta_prescricao"] = priorizacao.alerta_prescricao(
+            fila["tempo_inadimplencia_dias"])
 
     metricas = {}
     if config.METRICAS.exists():
@@ -76,8 +130,19 @@ def carregar():
     if config.CSV_ARRECADACAO.exists():
         arrecadacao = pd.read_csv(config.CSV_ARRECADACAO, sep=";", dtype=str)
 
+    teto = {}
+    caminho_teto = config.DADOS / "teto_desempenho.json"
+    if caminho_teto.exists():
+        teto = json.loads(caminho_teto.read_text(encoding="utf-8"))
+
+    comparacao = {}
+    caminho_comparacao = config.DADOS / "comparacao_ordenacoes.json"
+    if caminho_comparacao.exists():
+        comparacao = json.loads(caminho_comparacao.read_text(encoding="utf-8"))
+
     return {"dados": dados, "fila": fila, "metricas": metricas, "auditoria": auditoria,
-            "mitigacao": mitigacao, "importancia": importancia, "arrecadacao": arrecadacao}
+            "mitigacao": mitigacao, "importancia": importancia, "arrecadacao": arrecadacao,
+            "teto": teto, "comparacao": comparacao}
 
 
 def modo_escuro() -> bool:
@@ -89,7 +154,7 @@ def modo_escuro() -> bool:
 
 P = tema.paleta(modo_escuro())
 
-pacote = carregar()
+pacote = carregar(versao_dos_artefatos())
 if pacote is None:
     st.error("Banco de dados nao encontrado. Rode antes:  `python executar_poc.py`")
     st.stop()
@@ -114,14 +179,35 @@ aba_geral, aba_cobranca, aba_contribuinte, aba_equidade, aba_dados, aba_assisten
 with aba_geral:
     com_divida = dados[dados["valor_divida_consolidada"] > 0]
 
+    # Cada cartao mostra a carteira inteira e, abaixo, a parte que entra na fila
+    # de cobranca (sem os beneficiarios do IPTU Social). O percentual recuperavel
+    # usa a MESMA base da fila: dividir o retorno da fila pela divida da carteira
+    # inteira subestimaria a recuperacao.
+    na_fila = com_divida[com_divida["iptu_social"] == 0]
+    divida_total = com_divida["valor_divida_consolidada"].sum()
+    divida_fila = na_fila["valor_divida_consolidada"].sum()
+    protegidos = int(dados["iptu_social"].sum())
+
+    # Os textos abaixo dos valores sao composicao, nao variacao: sem seta e sem cor.
+    sem_seta = {"delta_color": "off", "delta_arrow": "off"}
+
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Imóveis na carteira", f"{len(dados):,}".replace(",", "."))
-    c2.metric("Com dívida inscrita", f"{len(com_divida):,}".replace(",", "."),
-              f"{len(com_divida) / len(dados):.1%} da carteira")
-    c3.metric("Dívida ativa", tema.compacto(com_divida["valor_divida_consolidada"].sum()))
+    c1.metric("Imóveis na carteira", tema.milhar(len(dados)),
+              f"{tema.milhar(protegidos)} no IPTU Social", **sem_seta)
+    c2.metric("Com dívida inscrita", tema.milhar(len(com_divida)),
+              f"{tema.milhar(len(na_fila))} na fila de cobrança", **sem_seta,
+              help=f"{tema.percentual(len(com_divida) / len(dados))} da carteira. A fila de "
+                   f"cobrança exclui os {tema.milhar(len(com_divida) - len(na_fila))} "
+                   "beneficiários do IPTU Social que têm dívida.")
+    c3.metric("Dívida ativa", tema.compacto(divida_total),
+              f"{tema.compacto(divida_fila)} na fila de cobrança", **sem_seta)
     if fila is not None:
-        c4.metric("Retorno esperado", tema.compacto(fila["retorno_esperado"].sum()),
-                  f"{fila['retorno_esperado'].sum() / com_divida['valor_divida_consolidada'].sum():.1%} recuperável")
+        retorno = fila["retorno_esperado"].sum()
+        c4.metric("Retorno esperado", tema.compacto(retorno),
+                  f"{tema.percentual(retorno / divida_fila)} da dívida na fila", **sem_seta,
+                  help="Soma, na fila de cobrança, de dívida × probabilidade de "
+                       "recuperação estimada pelo Modelo 2, que responde: "
+                       f"\"{tema.MODELOS['recuperabilidade']['pergunta']}\"")
 
     st.divider()
     col_esq, col_dir = st.columns(2)
@@ -213,22 +299,49 @@ with aba_cobranca:
         st.warning("Fila não gerada. Rode `python executar_poc.py`.")
     else:
         st.markdown("### Priorização por retorno esperado")
+        st.markdown(tema.pergunta_do_modelo("recuperabilidade"))
         st.caption("retorno esperado = valor da dívida × probabilidade de recuperação. "
                    "Ordenar só pela probabilidade privilegiaria dívidas pequenas; só pelo "
                    "valor, dívidas incobráveis. O produto equilibra os dois.")
 
+        # --- Prescricao: a ordem por retorno esperado nao considera o prazo ---
+        prescricao = priorizacao.resumo_prescricao(fila)
+        proxima = prescricao[priorizacao.ALERTA_PROXIMA]
+        vencida = prescricao[priorizacao.ALERTA_VENCIDA]
+        if proxima["casos"] or vencida["casos"]:
+            # "R$" duas vezes na mesma frase vira formula no Markdown: escapar o cifrao.
+            valor_proxima = tema.compacto(proxima["divida_reais"]).replace("$", r"\$")
+            valor_vencida = tema.compacto(vencida["divida_reais"]).replace("$", r"\$")
+            st.warning(
+                f"**Prescrição — a fila não considera o prazo de 5 anos (CTN, art. 174).** "
+                f"{tema.milhar(proxima['casos'])} dívidas "
+                f"({valor_proxima}) prescrevem em até 12 meses, e só "
+                f"{tema.milhar(proxima['no_topo_20pct'])} delas estão entre os 20% primeiros "
+                f"da fila — a posição mediana é "
+                f"{tema.percentual(proxima['posicao_mediana_na_fila'], 0)} da fila. Outras "
+                f"{tema.milhar(vencida['casos'])} ({valor_vencida}) "
+                f"têm 5 anos ou mais: confira se a prescrição foi interrompida. Esses casos "
+                f"precisam de controle próprio, fora da ordem por retorno esperado.")
+            st.caption("O alerta usa o tempo de inadimplência como aproximação do prazo e "
+                       "não conhece as causas de interrupção (parcelamento, protesto, "
+                       "despacho de citação). A situação de cada dívida é decisão da "
+                       "Procuradoria.")
+
         f1, f2, f3 = st.columns([2, 2, 1])
         setores = ["(todos)"] + sorted(fila["setor_urbano"].unique().tolist())
         setor_escolhido = f1.selectbox("Setor urbano", setores)
-        faixas = f2.multiselect("Faixa de recuperabilidade", ["alta", "media", "baixa"],
-                                default=["alta", "media", "baixa"])
+        faixas = f2.multiselect("Faixa de recuperabilidade", tema.ORDEM_FAIXAS,
+                                default=tema.ORDEM_FAIXAS, format_func=tema.rotulo_faixa)
         quantidade = f3.number_input("Exibir", 10, 500, 25, step=5)
+        so_prescricao = st.checkbox("Só dívidas com alerta de prescrição")
 
         filtrada = fila.copy()
         if setor_escolhido != "(todos)":
             filtrada = filtrada[filtrada["setor_urbano"] == setor_escolhido]
         if faixas:
             filtrada = filtrada[filtrada["faixa_recuperabilidade"].isin(faixas)]
+        if so_prescricao:
+            filtrada = filtrada[filtrada["alerta_prescricao"] != ""]
 
         m1, m2, m3 = st.columns(3)
         m1.metric("Casos selecionados", f"{len(filtrada):,}".replace(",", "."))
@@ -241,15 +354,15 @@ with aba_cobranca:
         # --- Faixas de recuperabilidade: rampa ordinal de uma hue ---
         with col_a:
             st.markdown("**Carteira por faixa de recuperabilidade**")
-            ordem = ["alta", "media", "baixa"]
             por_faixa = (filtrada.groupby("faixa_recuperabilidade")
                          .agg(casos=("id_contribuinte", "count"),
                               divida=("valor_divida_consolidada", "sum"),
                               retorno=("retorno_esperado", "sum"))
-                         .reindex(ordem).fillna(0).reset_index())
+                         .reindex(tema.ORDEM_FAIXAS).fillna(0).reset_index())
 
             figura = go.Figure(go.Bar(
-                x=por_faixa["faixa_recuperabilidade"], y=por_faixa["retorno"],
+                x=por_faixa["faixa_recuperabilidade"].map(tema.rotulo_faixa),
+                y=por_faixa["retorno"],
                 marker=dict(color=[P["ordinal"][f] for f in por_faixa["faixa_recuperabilidade"]],
                             cornerradius=4),
                 width=0.55,
@@ -265,13 +378,13 @@ with aba_cobranca:
             st.markdown("**Dívida × probabilidade de recuperação**")
             amostra = filtrada.sample(min(1200, len(filtrada)), random_state=config.SEMENTE)
             figura = go.Figure()
-            for faixa in ["alta", "media", "baixa"]:
+            for faixa in tema.ORDEM_FAIXAS:
                 bloco = amostra[amostra["faixa_recuperabilidade"] == faixa]
                 if bloco.empty:
                     continue
                 figura.add_trace(go.Scatter(
                     x=bloco["valor_divida_consolidada"], y=bloco["prob_recuperacao"],
-                    mode="markers", name=f"recuperabilidade {faixa}",
+                    mode="markers", name=f"recuperabilidade {tema.rotulo_faixa(faixa)}",
                     marker=dict(size=8, color=P["ordinal"][faixa], opacity=0.55,
                                 line=dict(width=2, color=P["superficie"])),
                     hovertemplate="Dívida: R$ %{x:,.0f}<br>P(recuperação): "
@@ -285,9 +398,11 @@ with aba_cobranca:
         st.markdown("**Fila priorizada**")
         colunas = ["setor_urbano", "tipo_imovel", "valor_divida_consolidada",
                    "tempo_inadimplencia_dias", "prob_recuperacao",
-                   "faixa_recuperabilidade", "retorno_esperado"]
+                   "faixa_recuperabilidade", "retorno_esperado", "alerta_prescricao"]
+        exibida = filtrada.head(int(quantidade))[colunas]
         st.dataframe(
-            filtrada.head(int(quantidade))[colunas],
+            exibida.assign(faixa_recuperabilidade=exibida["faixa_recuperabilidade"]
+                           .map(tema.rotulo_faixa)),
             use_container_width=True, hide_index=True,
             column_config={
                 "setor_urbano": "Setor",
@@ -298,9 +413,58 @@ with aba_cobranca:
                     "P(recuperação)", format="%.1f%%", min_value=0, max_value=1),
                 "faixa_recuperabilidade": "Faixa",
                 "retorno_esperado": st.column_config.NumberColumn("Retorno esperado", format="R$ %.2f"),
+                "alerta_prescricao": "Prescrição",
             })
         st.caption("Beneficiários do IPTU Social já foram excluídos desta fila, "
                    "conforme a seção 11 do plano de ensino.")
+
+        # --- A fila do modelo e melhor que uma regra simples? ---
+        comparacao = pacote["comparacao"]
+        if comparacao:
+            st.divider()
+            st.markdown("### A fila do modelo recupera mais que uma regra simples?")
+            st.caption(f"Dívidas do conjunto de teste ({tema.milhar(comparacao['n_casos'])} "
+                       "casos que o modelo não viu no treino), ordenadas por cada critério. A "
+                       "curva mostra quanto do valor **de fato recuperado** cada fila alcança "
+                       "conforme a equipe avança. Uma dívida recuperada conta pelo valor "
+                       "inteiro.")
+            curvas = pd.DataFrame(comparacao["curvas"])
+            estilos = {"modelo": (P["categorico"][0], "solid", 3),
+                       "maiores_dividas": (P["categorico"][1], "solid", 2),
+                       "mais_recentes": (P["categorico"][2], "dash", 2),
+                       "probabilidade": (P["tinta_muted"], "dot", 2)}
+            figura = go.Figure()
+            for chave, rotulo in comparacao["rotulos"].items():
+                cor, traco, largura = estilos[chave]
+                figura.add_trace(go.Scatter(
+                    x=curvas["fracao_casos"], y=curvas[chave], mode="lines", name=rotulo,
+                    line=dict(color=cor, dash=traco, width=largura),
+                    hovertemplate=f"{rotulo}<br>%{{x:.0%}} dos casos → "
+                                  "%{y:.1%} do valor recuperado<extra></extra>"))
+            figura.add_trace(go.Scatter(
+                x=curvas["fracao_casos"], y=curvas["aleatoria"], mode="lines",
+                name="Ordem aleatória", line=dict(color=P["eixo"], dash="dot", width=1),
+                hoverinfo="skip"))
+            figura.update_xaxes(title="% dos casos trabalhados", tickformat=".0%")
+            figura.update_yaxes(title="% do valor de fato recuperado", tickformat=".0%")
+            st.plotly_chart(tema.aplicar_layout(figura, P, 360, mostrar_legenda=True),
+                            width="stretch")
+
+            resumo, dif = comparacao["resumo"], comparacao["diferenca_modelo_x_maiores_dividas"]
+
+            def pontos(fracao: float) -> str:
+                return f"{fracao * 100:.1f}".replace(".", ",")
+            st.markdown(
+                f"Trabalhando os **20% primeiros** de cada fila: o Modelo 2 alcança "
+                f"**{tema.percentual(resumo['modelo']['20pct'])}** do valor recuperado; "
+                f"\"maiores dívidas primeiro\", "
+                f"**{tema.percentual(resumo['maiores_dividas']['20pct'])}**; a ordem "
+                f"aleatória, 20%. O modelo ganha da regra simples por "
+                f"{pontos(dif['diferenca'])} pontos percentuais (IC 95% de "
+                f"{pontos(dif['ic_inferior'])} a {pontos(dif['ic_superior'])}): "
+                "a diferença é real, mas pequena perto da que separa as duas da ordem "
+                "aleatória. Quase todo o ganho vem de ordenar pelo valor; o modelo "
+                "acrescenta um ajuste por cima.")
 
 
 # ==========================================================================
@@ -351,16 +515,19 @@ with aba_contribuinte:
             modelo_inad = joblib.load(config.MODELO_INADIMPLENCIA)
             prob_inad = float(modelo_inad.predict_proba(entrada)[0, 1])
 
-            st.metric("Probabilidade de inadimplência no próximo exercício", f"{prob_inad:.1%}")
+            st.markdown(tema.pergunta_do_modelo("inadimplencia"))
+            st.metric("Probabilidade de inadimplência no próximo exercício", tema.percentual(prob_inad))
 
+            st.markdown(tema.pergunta_do_modelo("recuperabilidade"))
             if divida > 0:
                 modelo_rec = joblib.load(config.MODELO_RECUPERABILIDADE)
                 prob_rec = float(modelo_rec.predict_proba(entrada)[0, 1])
                 import modelo as mod
 
                 faixa = mod.faixa_recuperabilidade(prob_rec)
-                st.metric("Probabilidade de recuperação da dívida (12 meses)", f"{prob_rec:.1%}",
-                          f"faixa {faixa}")
+                st.metric("Probabilidade de recuperação da dívida (12 meses)", tema.percentual(prob_rec),
+                          f"faixa {tema.rotulo_faixa(faixa)}", delta_color="off",
+                          delta_arrow="off")
                 st.metric("Retorno esperado", tema.moeda(divida * prob_rec))
             else:
                 st.caption("Sem dívida inscrita: o modelo de recuperabilidade não se aplica.")
@@ -395,28 +562,43 @@ with aba_equidade:
     else:
         escolha = st.radio("Modelo auditado", ["recuperabilidade", "inadimplencia"],
                            horizontal=True,
-                           format_func=lambda x: ("Modelo 2 — recuperabilidade"
-                                                  if x == "recuperabilidade"
-                                                  else "Modelo 1 — inadimplência"))
+                           format_func=lambda x: tema.MODELOS[x]["nome"])
+        st.markdown(tema.pergunta_do_modelo(escolha))
+        st.caption(f"{tema.MODELOS[escolha]['uso']} Na auditoria, um caso \"selecionado\" é "
+                   f"um caso {tema.MODELOS[escolha]['selecionado']}.")
         bloco = auditoria[escolha]
-        por_grupo = pd.DataFrame(bloco["por_grupo"])
+        por_grupo = tema.ordenar_faixas(pd.DataFrame(bloco["por_grupo"]))
         dp = bloco["paridade_demografica"]
         eo = bloco["igualdade_oportunidade"]
 
         c1, c2 = st.columns(2)
-        for coluna, teste in ((c1, dp), (c2, eo)):
+        intervalo = bloco.get("intervalo_95", {})
+        for coluna, teste, chave in ((c1, dp, "paridade_demografica"),
+                                     (c2, eo, "igualdade_oportunidade")):
             aprovado = teste["aprovado"]
-            coluna.metric(teste["metrica"], f"{teste['diferenca']:.3f}",
-                          "dentro do limiar (0,10)" if aprovado else "acima do limiar (0,10)",
-                          delta_color="normal" if aprovado else "inverse")
+            ic = intervalo.get(chave)
+            ajuda = None
+            if ic:
+                def virgula(x):
+                    return f"{x:.3f}".replace(".", ",")
+                ajuda = (f"Intervalo de confiança de 95% por bootstrap: "
+                         f"{virgula(ic['ic_inferior'])} a {virgula(ic['ic_superior'])}; "
+                         f"{ic['prob_acima_do_limite']:.0%} das reamostras acima de 0,10. "
+                         "Mede a incerteza do conjunto de teste; a aprovação usa a "
+                         "estimativa pontual.")
+            coluna.metric(teste["metrica"], f"{teste['diferenca']:.3f}".replace(".", ","),
+                          "dentro do limite (0,10)" if aprovado else "acima do limite (0,10)",
+                          delta_color="green" if aprovado else "red", delta_arrow="off",
+                          help=ajuda)
 
         if not (dp["aprovado"] and eo["aprovado"]):
             st.error(f"**Disparidade relevante detectada.** O grupo "
-                     f"'{dp['grupo_mais_selecionado']}' é selecionado com muito mais "
-                     f"frequência que '{dp['grupo_menos_selecionado']}'. "
+                     f"'{tema.rotulo_faixa(dp['grupo_mais_selecionado'])}' é selecionado "
+                     f"com muito mais frequência que "
+                     f"'{tema.rotulo_faixa(dp['grupo_menos_selecionado'])}'. "
                      f"Discussão e mitigação em `docs/RIA.md`, seção 2.")
         else:
-            st.success("Ambos os testes ficaram dentro do limiar de 0,10 adotado. "
+            st.success("Ambos os testes ficaram dentro do limite de disparidade de 0,10 adotado. "
                        "A auditoria permanece obrigatória a cada retreino.")
 
         st.divider()
@@ -440,11 +622,11 @@ with aba_equidade:
 
         if pacote["mitigacao"] is not None and escolha == "recuperabilidade":
             st.divider()
-            st.markdown("**Mitigação: limiar calibrado por grupo**")
-            st.caption("Em vez de um corte único em 0,5, cada grupo recebe um limiar que "
+            st.markdown("**Mitigação: corte calibrado por grupo**")
+            st.caption("Em vez de um corte único em 0,5, cada grupo recebe um corte que "
                        "iguala as taxas de seleção. Não exige retreinar o modelo e mantém "
-                       "a decisão auditável, com o limiar de cada grupo documentado.")
-            mit = pacote["mitigacao"]
+                       "a decisão auditável, com o corte de cada grupo documentado.")
+            mit = tema.ordenar_faixas(pacote["mitigacao"])
 
             figura = go.Figure()
             figura.add_trace(go.Bar(
@@ -464,7 +646,7 @@ with aba_equidade:
             depois = mit["taxa_selecao_depois"]
             st.caption(f"Disparidade na taxa de seleção: **{antes.max() - antes.min():.4f}** → "
                        f"**{depois.max() - depois.min():.4f}** após a calibração.")
-            with st.expander("Ver limiares calibrados"):
+            with st.expander("Ver cortes calibrados"):
                 st.dataframe(mit, use_container_width=True, hide_index=True)
 
 
@@ -490,18 +672,46 @@ estrutura de colunas de um cadastro imobiliário municipal.
     if metricas:
         st.divider()
         st.markdown("### Desempenho dos modelos")
+        for chave in ("inadimplencia", "recuperabilidade"):
+            st.markdown(f"- {tema.pergunta_do_modelo(chave)} {tema.MODELOS[chave]['uso']}")
+        teto = pacote["teto"]
+
+        def decimal(valor) -> str:
+            return f"{valor:.3f}".replace(".", ",") if valor is not None else "—"
+
         linhas = []
         for nome, bloco in metricas.items():
+            alcancavel = teto.get(nome, {}).get("alcancavel", {}).get("roc_auc")
             linhas.append({
-                "Modelo": ("Inadimplência" if nome == "inadimplencia" else "Recuperabilidade"),
-                "Acurácia": bloco["acuracia"], "Precisão": bloco["precisao"],
-                "Recall": bloco["recall"], "F1": bloco["f1"], "ROC-AUC": bloco["roc_auc"],
-                "n (teste)": bloco["n_teste"],
+                "Modelo": tema.MODELOS[nome]["nome"],
+                "Acurácia": decimal(bloco["acuracia"]), "Precisão": decimal(bloco["precisao"]),
+                "Recall": decimal(bloco["recall"]), "F1": decimal(bloco["f1"]),
+                "ROC-AUC": decimal(bloco["roc_auc"]),
+                "Teto do ROC-AUC": decimal(alcancavel),
+                "n (teste)": tema.milhar(bloco["n_teste"]),
             })
-        st.dataframe(pd.DataFrame(linhas), use_container_width=True, hide_index=True)
-        st.caption("Desempenho moderado é esperado e honesto: o processo gerador embute "
-                   "ruído deliberado. Números próximos de 1,0 num PoC como este indicariam "
-                   "vazamento de dados, não qualidade.")
+        st.dataframe(pd.DataFrame(linhas), width="stretch", hide_index=True)
+
+        if teto:
+            def roc(nome, versao):
+                return decimal(teto[nome][versao]["roc_auc"])
+            st.markdown(
+                "**Por que existe um teto.** O gerador da carteira sintética embute ruído "
+                "deliberado: um termo oculto, que representa o que nenhum cadastro registra "
+                "(desemprego, doença), e o sorteio final de cada resultado — quem tem 70% de "
+                "chance de pagar deixa de pagar em 3 de cada 10 casos. Um oráculo que conhece "
+                "a fórmula do gerador e todos os seus atributos chega a ROC-AUC de "
+                f"**{roc('inadimplencia', 'alcancavel')}** na inadimplência e "
+                f"**{roc('recuperabilidade', 'alcancavel')}** na recuperabilidade; mesmo "
+                "conhecendo também o ruído oculto, não passaria de "
+                f"{roc('inadimplencia', 'absoluto')} e {roc('recuperabilidade', 'absoluto')}. "
+                "Os dois modelos estão praticamente no teto. O Modelo 2 usa regressão "
+                "logística, a mesma forma do gerador; com gradient boosting, que sobreajustava "
+                "com poucos casos, ficava em 0,686. Deixar a faixa de renda de fora quase não "
+                "custa desempenho: sem ela, o teto do Modelo 2 passa de 0,722 para 0,721.")
+        st.caption("Um ROC-AUC acima do teto seria impossível de forma legítima: indicaria "
+                   "vazamento de dados — o modelo usando informação do resultado ou do futuro "
+                   "—, não qualidade. As métricas usam o corte de decisão de 0,5.")
 
     st.divider()
     st.markdown("### Limitações — leia antes de usar em decisão real")
@@ -547,7 +757,8 @@ SUGESTOES = {
 def _segredos() -> dict:
     """Credenciais de .streamlit/secrets.toml, quando existir (nunca versionado)."""
     try:
-        return {k: st.secrets[k] for k in ("OPENROUTER_API_KEY", "OPENROUTER_MODEL")
+        return {k: st.secrets[k]
+                for k in ("OPENROUTER_API_KEY", "OPENROUTER_MODEL", "SENHA_ASSISTENTE")
                 if k in st.secrets}
     except Exception:
         return {}
@@ -556,6 +767,32 @@ def _segredos() -> dict:
 @st.cache_resource
 def obter_assistente(chave: str, modelo_ia: str) -> assistente_ia.Assistente:
     return assistente_ia.Assistente(assistente_ia.ClienteOpenRouter(chave, modelo_ia))
+
+
+def _acesso_liberado() -> bool:
+    """Senha do assistente na versao publicada (SENHA_ASSISTENTE nos segredos).
+
+    Localmente, sem a senha configurada, o assistente fica aberto. Publicado, a
+    senha protege a chave do OpenRouter: cada pergunta tem custo.
+    """
+    senha = _segredos().get("SENHA_ASSISTENTE") or os.environ.get("SENHA_ASSISTENTE")
+    if not senha or st.session_state.get("assistente_liberado"):
+        return True
+    # O formulario fica num espaco reservado: com a senha certa, ele e apagado
+    # na mesma execucao, e o chat aparece no lugar.
+    espaco = st.empty()
+    with espaco.form("senha_assistente"):
+        tentativa = st.text_input("Senha do assistente", type="password")
+        entrou = st.form_submit_button("Entrar")
+    if entrou:
+        if hmac.compare_digest(tentativa.encode(), str(senha).encode()):
+            st.session_state.assistente_liberado = True
+            espaco.empty()
+            return True
+        st.error("Senha incorreta.")
+    st.caption("Nesta versão publicada, o assistente usa um modelo de linguagem pago e o "
+               "acesso é restrito. Peça a senha à coordenação do Eixo II.")
+    return False
 
 
 def _texto_md(texto: str) -> str:
@@ -604,10 +841,11 @@ with aba_assistente:
     try:
         chave_ia, modelo_ia = assistente_ia.ler_configuracao(_segredos())
     except assistente_ia.ErroAssistente:
+        chave_ia = modelo_ia = None
         st.info("Assistente desativado: falta a chave do OpenRouter. Crie o arquivo `.env` na "
                 "raiz do projeto com a linha `OPENROUTER_API_KEY=...` (o arquivo está no "
                 "`.gitignore`) e recarregue a página.")
-    else:
+    if chave_ia and _acesso_liberado():
         if "conversa_ia" not in st.session_state:
             nova_conversa()
         conversa = st.session_state.conversa_ia
@@ -645,9 +883,9 @@ with aba_assistente:
                       submit_mode="disable", key="entrada_ia", on_submit=_guardar_digitada)
 
         with cabecalho_ia, st.container(horizontal=True, vertical_alignment="center"):
-            custo = sum(t["custo_usd"] for t in conversa)
+            custo = f"{sum(t['custo_usd'] for t in conversa):.4f}".replace(".", ",")
             st.caption(f"Modelo `{modelo_ia}` via OpenRouter · custo desta conversa: "
-                       f"US\\$ {custo:.4f}")
+                       f"US\\$ {custo}")
             st.button("Nova conversa", icon=":material/refresh:", on_click=nova_conversa,
                       disabled=not conversa, width="content")
 

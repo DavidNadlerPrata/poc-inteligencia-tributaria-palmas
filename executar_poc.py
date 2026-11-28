@@ -22,7 +22,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
 
 import config
-from src import coleta, etl, fairness, modelo, sintetico
+from src import coleta, etl, fairness, modelo, priorizacao, sintetico
 
 
 def cabecalho(texto: str) -> None:
@@ -47,7 +47,15 @@ def main() -> int:
     cabecalho("[Sprint 2] Coleta de dados reais via API REST da Prefeitura de Palmas")
     arrecadacao = None
     if args.sem_rede:
-        print("Modo --sem-rede: coleta online ignorada.")
+        # Sem rede, mas com o arquivo versionado da ultima coleta: e assim que o
+        # CI e o Streamlit Community Cloud montam o banco sem chamar a API.
+        if config.CSV_ARRECADACAO.exists():
+            import pandas as pd
+            arrecadacao = pd.read_csv(config.CSV_ARRECADACAO, sep=";", dtype=str)
+            print(f"Modo --sem-rede: usando a arrecadacao local "
+                  f"({len(arrecadacao)} registros, {config.CSV_ARRECADACAO.name}).")
+        else:
+            print("Modo --sem-rede: coleta online ignorada.")
     else:
         try:
             arrecadacao = coleta.coletar(ano=args.ano, forcar=args.coletar)
@@ -72,7 +80,16 @@ def main() -> int:
     # ---------------- Sprint 3: modelos ----------------
     # treinar() ja imprime as metricas e grava models/metricas.json.
     cabecalho("[Sprint 3] Treino e avaliacao dos modelos de Machine Learning")
-    modelo.treinar(dados)
+    metricas = modelo.treinar(dados)
+
+    # Teto: o melhor que um oraculo que conhece a formula do gerador conseguiria.
+    teto = sintetico.teto_de_desempenho()
+    for nome, valores in teto.items():
+        print(f"  teto do ROC-AUC ({nome}): alcancavel {valores['alcancavel']['roc_auc']:.3f}"
+              f" | absoluto {valores['absoluto']['roc_auc']:.3f}"
+              f" | modelo {metricas[nome]['roc_auc']:.3f}")
+    with open(config.DADOS / "teto_desempenho.json", "w", encoding="utf-8") as arquivo:
+        json.dump(teto, arquivo, ensure_ascii=False, indent=2)
 
     cabecalho("[Sprint 3] Fila de cobranca priorizada por retorno esperado")
     fila = modelo.priorizar_cobranca(dados)
@@ -95,6 +112,23 @@ def main() -> int:
 
     fila.to_csv(config.DADOS / "fila_cobranca.csv", sep=";", index=False, encoding="utf-8-sig")
 
+    # A fila recupera mais que uma regra simples? E o que ela faz com a prescricao?
+    import pandas as pd
+    teste_rec = pd.read_csv(config.DADOS / "teste_recuperabilidade.csv", sep=";")
+    comparacao = priorizacao.comparar_ordenacoes(teste_rec)
+    comparacao["prescricao_na_fila"] = priorizacao.resumo_prescricao(fila)
+    print("\n  Valor de fato recuperado alcancado nos 20% primeiros da fila (teste):")
+    for chave, rotulo in priorizacao.ORDENACOES.items():
+        print(f"    {rotulo:36} {comparacao['resumo'][chave]['20pct']:.1%}")
+    dif = comparacao["diferenca_modelo_x_maiores_dividas"]
+    print(f"    modelo - maiores dividas: {dif['diferenca']:+.3f} "
+          f"(IC 95% {dif['ic_inferior']:+.3f} a {dif['ic_superior']:+.3f})")
+    for alerta, dados_alerta in comparacao["prescricao_na_fila"].items():
+        print(f"  prescricao -- {alerta}: {dados_alerta['casos']} dividas, "
+              f"R$ {dados_alerta['divida_reais']:,.2f}")
+    with open(config.DADOS / "comparacao_ordenacoes.json", "w", encoding="utf-8") as arquivo:
+        json.dump(comparacao, arquivo, ensure_ascii=False, indent=2)
+
     # ---------------- Sprint 3: explicabilidade ----------------
     cabecalho("[Sprint 3] Interpretabilidade - direito a explicacao (LGPD Art. 20)")
     importancia = modelo.importancia_atributos(dados, "recuperabilidade")
@@ -111,6 +145,9 @@ def main() -> int:
         "inadimplencia": fairness.auditar(teste_inad, titulo="- Modelo 1 (inadimplencia)"),
         "recuperabilidade": fairness.auditar(teste_rec, titulo="- Modelo 2 (recuperabilidade)"),
     }
+    # Incerteza de amostragem das diferencas (bootstrap dentro de cada grupo).
+    for chave, teste in (("inadimplencia", teste_inad), ("recuperabilidade", teste_rec)):
+        auditoria[chave]["intervalo_95"] = fairness.intervalo_bootstrap(teste)
     mitigacao = fairness.simular_mitigacao(teste_rec)
 
     for chave in auditoria:
@@ -132,7 +169,7 @@ def main() -> int:
                     for m in auditoria
                     for t in ("paridade_demografica", "igualdade_oportunidade"))
     if not aprovados:
-        print("\n  ATENCAO: a auditoria apontou disparidade acima do limiar.")
+        print("\n  ATENCAO: a auditoria apontou disparidade acima do limite.")
         print("  Discussao e plano de mitigacao em docs/RIA.md, secao 2.")
 
     return 0
